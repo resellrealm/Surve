@@ -40,9 +40,9 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = isDark ? Colors.dark : Colors.light;
-  const { session, user, surveys } = useStore();
+  const { session, user, surveys, themePreference, setThemePreference } = useStore();
 
-  const [darkMode, setDarkMode] = useState(isDark);
+  const darkMode = themePreference === 'dark' || (themePreference === 'system' && isDark);
   const [notifications, setNotifications] = useState(true);
 
   const userEmail = user?.email || session?.user?.email || '';
@@ -73,7 +73,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9FAFB' }]}
+      style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top']}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -86,16 +86,16 @@ export default function ProfileScreen() {
             }}
             style={styles.headerButton}
           >
-            <ChevronLeft size={24} color={isDark ? colors.text : '#111827'} strokeWidth={2} />
+            <ChevronLeft size={24} color={colors.text} strokeWidth={2} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: isDark ? colors.text : '#111827' }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
             Profile
           </Text>
           <Pressable
             onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
             style={styles.headerButton}
           >
-            <Settings size={22} color={isDark ? colors.text : '#111827'} strokeWidth={1.8} />
+            <Settings size={22} color={colors.text} strokeWidth={1.8} />
           </Pressable>
         </Animated.View>
 
@@ -108,7 +108,7 @@ export default function ProfileScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.avatarRing}
             >
-              <View style={[styles.avatarInner, { backgroundColor: isDark ? colors.background : '#F9FAFB' }]}>
+              <View style={[styles.avatarInner, { backgroundColor: colors.background }]}>
                 <View style={styles.avatarCircle}>
                   <Text style={styles.avatarText}>{initials}</Text>
                 </View>
@@ -116,12 +116,18 @@ export default function ProfileScreen() {
             </LinearGradient>
           </View>
 
-          <Text style={[styles.userName, { color: isDark ? colors.text : '#111827' }]}>
+          <Text style={[styles.userName, { color: colors.text }]}>
             {fullName}
           </Text>
 
+          {userEmail ? (
+            <Text style={[styles.userEmail, { color: colors.textSecondary }]}>
+              {userEmail}
+            </Text>
+          ) : null}
+
           {/* Level badge */}
-          <View style={[styles.levelBadge, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
+          <View style={[styles.levelBadge, { backgroundColor: colors.surfaceSecondary }]}>
             <Award size={14} color="#475569" strokeWidth={2.5} />
             <Text style={styles.levelText}>Survey Pro</Text>
           </View>
@@ -132,31 +138,31 @@ export default function ProfileScreen() {
           <GlassCard delay={0} style={styles.statsCard}>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: isDark ? colors.text : '#111827' }]}>
+                <Text style={[styles.statValue, { color: colors.text }]}>
                   {surveysCreated}
                 </Text>
-                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondary : '#6B7280' }]}>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                   Created
                 </Text>
               </View>
-              <View style={[styles.statDivider, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]} />
+              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
               <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: isDark ? colors.text : '#111827' }]}>
+                <Text style={[styles.statValue, { color: colors.text }]}>
                   0
                 </Text>
-                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondary : '#6B7280' }]}>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                   Responses
                 </Text>
               </View>
-              <View style={[styles.statDivider, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]} />
+              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
               <View style={styles.statItem}>
                 <View style={styles.streakRow}>
                   <Flame size={16} color="#F59E0B" strokeWidth={2.5} />
-                  <Text style={[styles.statValue, { color: isDark ? colors.text : '#111827' }]}>
+                  <Text style={[styles.statValue, { color: colors.text }]}>
                     0
                   </Text>
                 </View>
-                <Text style={[styles.statLabel, { color: isDark ? colors.textSecondary : '#6B7280' }]}>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                   Streak
                 </Text>
               </View>
@@ -168,7 +174,7 @@ export default function ProfileScreen() {
         <View style={styles.sectionHeader}>
           <Animated.Text
             entering={FadeInDown.duration(400).delay(160)}
-            style={[styles.sectionTitle, { color: isDark ? colors.textSecondary : '#6B7280' }]}
+            style={[styles.sectionTitle, { color: colors.textSecondary }]}
           >
             ACCOUNT
           </Animated.Text>
@@ -185,14 +191,14 @@ export default function ProfileScreen() {
                 value={darkMode}
                 onValueChange={(v) => {
                   Haptics.selectionAsync();
-                  setDarkMode(v);
+                  setThemePreference(v ? 'dark' : 'light');
                 }}
-                trackColor={{ false: '#D1D5DB', true: '#94A3B8' }}
-                thumbColor={darkMode ? '#475569' : '#F9FAFB'}
+                trackColor={{ false: colors.border, true: colors.primaryLight }}
+                thumbColor={darkMode ? colors.primary : colors.surface}
               />
             }
           />
-          <View style={[styles.separator, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]} />
+          <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
           <SettingItem
             icon={<Bell size={20} color="#475569" strokeWidth={2} />}
             label="Notifications"
@@ -205,8 +211,8 @@ export default function ProfileScreen() {
                   Haptics.selectionAsync();
                   setNotifications(v);
                 }}
-                trackColor={{ false: '#D1D5DB', true: '#94A3B8' }}
-                thumbColor={notifications ? '#475569' : '#F9FAFB'}
+                trackColor={{ false: colors.border, true: colors.primaryLight }}
+                thumbColor={notifications ? colors.primary : colors.surface}
               />
             }
           />
@@ -216,7 +222,7 @@ export default function ProfileScreen() {
         <View style={styles.sectionHeader}>
           <Animated.Text
             entering={FadeInDown.duration(400).delay(280)}
-            style={[styles.sectionTitle, { color: isDark ? colors.textSecondary : '#6B7280' }]}
+            style={[styles.sectionTitle, { color: colors.textSecondary }]}
           >
             SUPPORT
           </Animated.Text>
@@ -230,7 +236,7 @@ export default function ProfileScreen() {
             colors={colors}
             onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
           />
-          <View style={[styles.separator, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]} />
+          <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
           <SettingItem
             icon={<FileText size={20} color="#475569" strokeWidth={2} />}
             label="Terms of Service"
@@ -238,7 +244,7 @@ export default function ProfileScreen() {
             colors={colors}
             onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
           />
-          <View style={[styles.separator, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]} />
+          <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
           <SettingItem
             icon={<Shield size={20} color="#475569" strokeWidth={2} />}
             label="Privacy Policy"
@@ -255,7 +261,7 @@ export default function ProfileScreen() {
           style={styles.signOutCard}
         >
           <View style={styles.signOutInner}>
-            <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2D1515' : '#FEF2F2' }]}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.errorLight }]}>
               <LogOut size={20} color="#EF4444" strokeWidth={2} />
             </View>
             <Text style={styles.signOutText}>Sign Out</Text>
@@ -265,7 +271,7 @@ export default function ProfileScreen() {
         {/* Version */}
         <Animated.Text
           entering={FadeInDown.duration(400).delay(480)}
-          style={[styles.versionText, { color: isDark ? colors.textSecondary : '#9CA3AF' }]}
+          style={[styles.versionText, { color: colors.textTertiary }]}
         >
           Surve v1.0.0
         </Animated.Text>
@@ -300,10 +306,10 @@ function SettingItem({
       ]}
     >
       <View style={styles.settingLeft}>
-        <View style={[styles.iconCircle, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
+        <View style={[styles.iconCircle, { backgroundColor: colors.surfaceSecondary }]}>
           {icon}
         </View>
-        <Text style={[styles.settingLabel, { color: isDark ? colors.text : '#111827' }]}>
+        <Text style={[styles.settingLabel, { color: colors.text }]}>
           {label}
         </Text>
       </View>
@@ -311,7 +317,7 @@ function SettingItem({
         onPress && (
           <ChevronRight
             size={18}
-            color={isDark ? colors.textSecondary : '#9CA3AF'}
+            color={colors.textTertiary}
             strokeWidth={2}
           />
         )
@@ -371,18 +377,23 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#475569',
+    backgroundColor: '#475569', // matches Colors.light.primary
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    color: '#FFFFFF',
+    color: '#F1F0EE', // off-white on grey avatar
     fontSize: 36,
     fontWeight: '700',
   },
   userName: {
     fontSize: 22,
     fontWeight: '700',
+  },
+  userEmail: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginTop: 2,
   },
   levelBadge: {
     flexDirection: 'row',

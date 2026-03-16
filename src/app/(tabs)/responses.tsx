@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { MessageSquare, ChevronRight, MessagesSquare } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../lib/store';
 import { fetchScores } from '../../lib/sportScores';
@@ -276,9 +277,30 @@ export default function ResponsesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9FAFB' }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={accentColor} />
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9FAFB' }]} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: isDark ? colors.text : '#111827' }]}>Responses</Text>
+        </View>
+        <View style={styles.listContent}>
+          {[0, 1, 2, 3].map((i) => (
+            <Animated.View
+              key={i}
+              entering={FadeInDown.delay(i * 100).duration(400)}
+              style={[styles.card, { backgroundColor: cardBg, borderColor }]}
+            >
+              <View style={styles.cardTop}>
+                <View style={styles.cardTitleRow}>
+                  <Skeleton width="60%" height={18} />
+                  <Skeleton width={60} height={22} borderRadius={12} />
+                </View>
+                <Skeleton width={80} height={12} style={{ marginTop: 4 }} />
+              </View>
+              <View style={[styles.cardBottom, { borderTopColor: borderColor }]}>
+                <Skeleton width={120} height={16} />
+                <Skeleton width={16} height={16} />
+              </View>
+            </Animated.View>
+          ))}
         </View>
       </SafeAreaView>
     );

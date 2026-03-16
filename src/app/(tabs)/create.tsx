@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -72,6 +72,8 @@ export default function CreateSurveyScreen() {
   // Step 1
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [titleError, setTitleError] = useState('');
+  const [questionErrors, setQuestionErrors] = useState<Record<string, string>>({});
 
   // Step 2
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -105,24 +107,47 @@ export default function CreateSurveyScreen() {
     setQuestions(questions.filter((q) => q.id !== id));
   };
 
+  const validateTitle = useCallback((value: string) => {
+    if (!value.trim()) {
+      setTitleError('Please enter a survey title');
+      return false;
+    }
+    if (value.trim().length < 3) {
+      setTitleError('Title must be at least 3 characters');
+      return false;
+    }
+    setTitleError('');
+    return true;
+  }, []);
+
+  const handleTitleChange = useCallback((value: string) => {
+    setTitle(value);
+    if (titleError) validateTitle(value);
+  }, [titleError, validateTitle]);
+
   const nextStep = () => {
-    if (step === 1 && !title.trim()) {
-      Alert.alert('Missing Title', 'Please enter a survey title.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-    if (step === 2 && questions.length === 0) {
-      Alert.alert('No Questions', 'Please add at least one question.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-    if (step === 2) {
-      const emptyQ = questions.find((q) => !q.text.trim());
-      if (emptyQ) {
-        Alert.alert('Empty Question', 'Please fill in all question texts.');
+    if (step === 1) {
+      if (!validateTitle(title)) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
+    }
+    if (step === 2 && questions.length === 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('No Questions', 'Please add at least one question.');
+      return;
+    }
+    if (step === 2) {
+      const errors: Record<string, string> = {};
+      questions.forEach((q) => {
+        if (!q.text.trim()) errors[q.id] = 'Question text is required';
+      });
+      if (Object.keys(errors).length > 0) {
+        setQuestionErrors(errors);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+      setQuestionErrors({});
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setStep(step + 1);
@@ -221,12 +246,28 @@ export default function CreateSurveyScreen() {
       <View style={styles.inputGroup}>
         <Text style={[styles.label, { color: isDark ? colors.textSecondary : '#374151' }]}>Title</Text>
         <TextInput
-          style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: inputText }]}
+          style={[
+            styles.textInput,
+            {
+              backgroundColor: inputBg,
+              borderColor: titleError ? '#EF4444' : inputBorder,
+              color: inputText,
+            },
+          ]}
           placeholder="e.g. Customer Satisfaction Survey"
           placeholderTextColor={placeholderColor}
           value={title}
-          onChangeText={setTitle}
+          onChangeText={handleTitleChange}
+          onBlur={() => title.length > 0 && validateTitle(title)}
         />
+        {titleError ? (
+          <Animated.Text
+            entering={FadeInDown.duration(200)}
+            style={styles.errorText}
+          >
+            {titleError}
+          </Animated.Text>
+        ) : null}
       </View>
 
       <View style={styles.inputGroup}>
@@ -270,12 +311,29 @@ export default function CreateSurveyScreen() {
           </View>
 
           <TextInput
-            style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: inputText }]}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: inputBg,
+                borderColor: questionErrors[question.id] ? '#EF4444' : inputBorder,
+                color: inputText,
+              },
+            ]}
             placeholder="Enter your question"
             placeholderTextColor={placeholderColor}
             value={question.text}
-            onChangeText={(text) => updateQuestion(question.id, { text })}
+            onChangeText={(text) => {
+              updateQuestion(question.id, { text });
+              if (questionErrors[question.id] && text.trim()) {
+                setQuestionErrors((prev) => { const next = { ...prev }; delete next[question.id]; return next; });
+              }
+            }}
           />
+          {questionErrors[question.id] ? (
+            <Animated.Text entering={FadeInDown.duration(200)} style={styles.errorText}>
+              {questionErrors[question.id]}
+            </Animated.Text>
+          ) : null}
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroll}>
             {QUESTION_TYPES.map((type) => (
@@ -669,5 +727,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: Typography.body.fontSize,
     fontWeight: '700',
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+    marginTop: 4,
   },
 });
