@@ -83,16 +83,20 @@ export default function HomeScreen() {
   const { surveys, setSurveys, user } = useStore();
   const [refreshing, setRefreshing] = React.useState(false);
 
+  const session = useStore((s) => s.session);
+
   const fetchSurveys = useCallback(async () => {
+    if (!session?.user?.id) return;
     const { data, error } = await supabase
       .from('surveys')
       .select('*')
+      .eq('user_id', session.user.id)
       .order('created_at', { ascending: false });
 
     if (data && !error) {
       setSurveys(data.map((s: any) => ({ ...s, response_count: s.total_responses ?? 0 })));
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     fetchSurveys();
