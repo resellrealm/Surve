@@ -266,10 +266,13 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
         <Pressable style={styles.scoreSide} onPress={incrementHome}>
           <Animated.View style={[styles.scoreContent, homeAnimStyle]}>
             <Text style={[Typography.caption1, { color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: '600' }]}>
-              Home
+              {sport.scoreLabel.home}
             </Text>
             <Text style={[styles.scoreNumber, { color: colors.text }]}>
               {score.home}
+            </Text>
+            <Text style={[Typography.caption2, { color: colors.textTertiary, marginBottom: Spacing.sm }]}>
+              {sport.pointName}
             </Text>
             <View style={styles.scoreButtons}>
               <Pressable onPress={incrementHome} style={[styles.scoreBtn, { backgroundColor: sport.accentColor + '25' }]} hitSlop={8}>
@@ -289,10 +292,13 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
         <Pressable style={styles.scoreSide} onPress={incrementAway}>
           <Animated.View style={[styles.scoreContent, awayAnimStyle]}>
             <Text style={[Typography.caption1, { color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: '600' }]}>
-              Away
+              {sport.scoreLabel.away}
             </Text>
             <Text style={[styles.scoreNumber, { color: colors.text }]}>
               {score.away}
+            </Text>
+            <Text style={[Typography.caption2, { color: colors.textTertiary, marginBottom: Spacing.sm }]}>
+              {sport.pointName}
             </Text>
             <View style={styles.scoreButtons}>
               <Pressable onPress={incrementAway} style={[styles.scoreBtn, { backgroundColor: sport.accentColor + '25' }]} hitSlop={8}>

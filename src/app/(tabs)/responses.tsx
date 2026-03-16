@@ -13,7 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
+import { MessageSquare, ChevronRight, MessagesSquare } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../lib/store';
@@ -35,6 +36,10 @@ function getSportName(sportType: SportType): string {
 
 function getSportAccentColor(sportType: SportType): string {
   return SPORTS.find((s) => s.id === sportType)?.accentColor ?? '#475569';
+}
+
+function getSportIcon(sportType: SportType): LucideIcon | null {
+  return SPORTS.find((s) => s.id === sportType)?.icon ?? null;
 }
 
 export default function ResponsesScreen() {
@@ -172,12 +177,12 @@ export default function ResponsesScreen() {
 
           <View style={[styles.cardBottom, { borderTopColor: borderColor }]}>
             <View style={styles.responseCount}>
-              <Ionicons name="chatbubbles-outline" size={18} color={accentColor} />
+              <MessagesSquare size={18} color={accentColor} strokeWidth={2} />
               <Text style={[styles.responseCountText, { color: isDark ? colors.text : '#374151' }]}>
                 {item.response_count} {item.response_count === 1 ? 'response' : 'responses'}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={isDark ? colors.textSecondary : '#9CA3AF'} />
+            <ChevronRight size={18} color={isDark ? colors.textSecondary : '#9CA3AF'} strokeWidth={2} />
           </View>
         </Pressable>
       </Animated.View>
@@ -192,6 +197,7 @@ export default function ResponsesScreen() {
     });
     const sportAccent = getSportAccentColor(item.sport_type);
     const sportName = getSportName(item.sport_type);
+    const SportIcon = getSportIcon(item.sport_type);
     const winner = item.home_score > item.away_score ? 'Home' : item.away_score > item.home_score ? 'Away' : 'Draw';
 
     return (
@@ -204,9 +210,12 @@ export default function ResponsesScreen() {
         >
           <View style={styles.cardTop}>
             <View style={styles.cardTitleRow}>
-              <Text style={[styles.cardTitle, { color: isDark ? colors.text : '#111827' }]} numberOfLines={1}>
-                {sportName}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                {SportIcon && <SportIcon size={18} color={sportAccent} strokeWidth={2} />}
+                <Text style={[styles.cardTitle, { color: isDark ? colors.text : '#111827' }]} numberOfLines={1}>
+                  {sportName}
+                </Text>
+              </View>
               <View style={[styles.statusBadge, { backgroundColor: sportAccent + '15' }]}>
                 <Text style={[styles.statusText, { color: sportAccent }]}>
                   {winner}
@@ -255,7 +264,7 @@ export default function ResponsesScreen() {
     <View style={styles.emptyContainer}>
       <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.emptyContent}>
         <View style={[styles.emptyIconCircle, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
-          <Ionicons name="chatbubbles-outline" size={48} color={accentColor} />
+          <MessagesSquare size={48} color={accentColor} strokeWidth={1.5} />
         </View>
         <Text style={[styles.emptyTitle, { color: isDark ? colors.text : '#111827' }]}>No responses yet</Text>
         <Text style={[styles.emptySubtitle, { color: isDark ? colors.textSecondary : '#6B7280' }]}>

@@ -181,18 +181,40 @@ export const Shadows = {
   },
 } as const;
 
+// Glass morphism tokens
+export const Glass = {
+  light: {
+    background: 'rgba(255,255,255,0.6)',
+    border: 'rgba(229,231,235,0.5)',
+  },
+  dark: {
+    background: 'rgba(31,41,55,0.5)',
+    border: 'rgba(75,85,99,0.3)',
+  },
+} as const;
+
+// Tab accent colors (Nutrio+ pattern)
+export const TabColors = {
+  home: { light: '#111827', dark: '#FFFFFF' },       // gray-900 / white
+  create: { light: '#475569', dark: '#94A3B8' },     // slate-600 / slate-400
+  discover: { light: '#10B981', dark: '#10B981' },    // emerald-500
+  responses: { light: '#0EA5E9', dark: '#0EA5E9' },   // sky-500
+  profile: { light: '#64748B', dark: '#94A3B8' },     // slate-500 / slate-400
+} as const;
+
 // Spring animation configs for iOS-native feel
 export const Springs = {
   gentle: { damping: 20, stiffness: 150, mass: 1 },
   bouncy: { damping: 12, stiffness: 200, mass: 0.8 },
   snappy: { damping: 15, stiffness: 300, mass: 0.8 },
   quick: { damping: 20, stiffness: 400, mass: 0.8 },
+  tab: { damping: 30, stiffness: 500 },
 } as const;
 
 export const Layout = {
   screenWidth: SCREEN_WIDTH,
   screenHeight: SCREEN_HEIGHT,
   isSmallDevice: SCREEN_WIDTH < 375,
-  contentPadding: 20,
-  tabBarHeight: 85,
+  contentPadding: 16,
+  tabBarHeight: 60,
 } as const;

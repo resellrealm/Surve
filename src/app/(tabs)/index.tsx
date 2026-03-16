@@ -9,7 +9,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { MessageCircle, ChevronRight, ClipboardList } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
   FadeInRight,
@@ -65,12 +65,12 @@ function SurveyCard({ survey, index }: { survey: Survey; index: number }) {
       )}
       <View style={[styles.surveyCardFooter, { borderTopColor: colors.borderLight }]}>
         <View style={styles.statItem}>
-          <Ionicons name="chatbubble-outline" size={14} color={colors.textTertiary} />
+          <MessageCircle size={14} color={colors.textTertiary} strokeWidth={2} />
           <Text style={[Typography.caption1, { color: colors.textSecondary, marginLeft: 4 }]}>
             {survey.response_count} responses
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+        <ChevronRight size={16} color={colors.textTertiary} strokeWidth={2} />
       </View>
     </AnimatedPressable>
   );
@@ -160,7 +160,7 @@ export default function HomeScreen() {
 
         {surveys.length === 0 ? (
           <Animated.View entering={FadeInDown.delay(300)} style={[styles.emptyState, { backgroundColor: colors.surfaceSecondary }]}>
-            <Ionicons name="clipboard-outline" size={48} color={colors.textTertiary} />
+            <ClipboardList size={48} color={colors.textTertiary} strokeWidth={1.5} />
             <Text style={[Typography.headline, { color: colors.text, marginTop: Spacing.lg }]}>
               No surveys yet
             </Text>
