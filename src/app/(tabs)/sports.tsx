@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   useColorScheme,
+  ActivityIndicator,
 } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -16,11 +17,18 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { ArrowLeft, RotateCcw, Plus, Minus } from 'lucide-react-native';
+import { ArrowLeft, RotateCcw, Plus, Minus, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Springs } from '../../constants/theme';
 import { SPORTS, type Sport } from '../../constants/sports';
 import FieldBackground from '../../components/sport/FieldBackground';
+import { useStore } from '../../lib/store';
+import {
+  createScore,
+  updateScore,
+  subscribeToScores,
+} from '../../lib/sportScores';
+import type { SportType } from '../../types';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -56,17 +64,61 @@ function SportCard({ sport, index, onSelect }: { sport: Sport; index: number; on
   );
 }
 
-interface ScoreState {
-  home: number;
-  away: number;
-}
-
 function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) {
   const colorScheme = useColorScheme();
   const colors = Colors[(colorScheme ?? 'light') as 'light' | 'dark'];
-  const [score, setScore] = useState<ScoreState>({ home: 0, away: 0 });
+  const { session, activeScore, setActiveScore, updateSportScore } = useStore();
+  const [loading, setLoading] = useState(true);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Local score state for immediate UI feedback
+  const [score, setScore] = useState({ home: 0, away: 0 });
   const homeScale = useSharedValue(1);
   const awayScale = useSharedValue(1);
+
+  // Create or resume a score record on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function init() {
+      if (!session?.user?.id) return;
+
+      try {
+        const record = await createScore({
+          userId: session.user.id,
+          sportType: sport.id as SportType,
+        });
+        if (cancelled) return;
+        setActiveScore(record);
+        setScore({ home: record.home_score, away: record.away_score });
+      } catch (err) {
+        console.error('Failed to create score record:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    init();
+    return () => { cancelled = true; };
+  }, [session?.user?.id, sport.id]);
+
+  // Debounced sync to Supabase
+  const syncScore = useCallback((home: number, away: number) => {
+    if (!activeScore) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const updated = await updateScore(activeScore.id, {
+          home_score: home,
+          away_score: away,
+        });
+        updateSportScore(updated.id, updated);
+      } catch (err) {
+        console.error('Failed to sync score:', err);
+      }
+    }, 500);
+  }, [activeScore?.id]);
 
   const homeAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: homeScale.value }],
@@ -82,8 +134,12 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
       withTiming(1.15, { duration: 100 }),
       withSpring(1, Springs.bouncy),
     );
-    setScore(s => ({ ...s, home: s.home + 1 }));
-  }, []);
+    setScore(s => {
+      const next = { ...s, home: s.home + 1 };
+      syncScore(next.home, next.away);
+      return next;
+    });
+  }, [syncScore]);
 
   const incrementAway = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -91,25 +147,85 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
       withTiming(1.15, { duration: 100 }),
       withSpring(1, Springs.bouncy),
     );
-    setScore(s => ({ ...s, away: s.away + 1 }));
-  }, []);
+    setScore(s => {
+      const next = { ...s, away: s.away + 1 };
+      syncScore(next.home, next.away);
+      return next;
+    });
+  }, [syncScore]);
 
   const decrementHome = useCallback(() => {
-    setScore(s => ({ ...s, home: Math.max(0, s.home - 1) }));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+    setScore(s => {
+      const next = { ...s, home: Math.max(0, s.home - 1) };
+      syncScore(next.home, next.away);
+      return next;
+    });
+  }, [syncScore]);
 
   const decrementAway = useCallback(() => {
-    setScore(s => ({ ...s, away: Math.max(0, s.away - 1) }));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+    setScore(s => {
+      const next = { ...s, away: Math.max(0, s.away - 1) };
+      syncScore(next.home, next.away);
+      return next;
+    });
+  }, [syncScore]);
 
   const resetScore = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     setScore({ home: 0, away: 0 });
+    syncScore(0, 0);
+  }, [syncScore]);
+
+  const finishGame = useCallback(async () => {
+    if (!activeScore) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const updated = await updateScore(activeScore.id, {
+        home_score: score.home,
+        away_score: score.away,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      });
+      updateSportScore(updated.id, updated);
+      setActiveScore(null);
+      onBack();
+    } catch (err) {
+      console.error('Failed to finish game:', err);
+    }
+  }, [activeScore?.id, score, onBack]);
+
+  const handleBack = useCallback(() => {
+    // Flush any pending sync
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (activeScore) {
+      updateScore(activeScore.id, {
+        home_score: score.home,
+        away_score: score.away,
+        status: 'paused',
+      }).catch((err) => console.error('Failed to pause score:', err));
+    }
+    setActiveScore(null);
+    onBack();
+  }, [activeScore?.id, score, onBack]);
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, []);
 
   const Icon = sport.icon;
+
+  if (loading) {
+    return (
+      <View style={[styles.scoringContainer, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={sport.accentColor} />
+      </View>
+    );
+  }
 
   return (
     <Animated.View
@@ -125,7 +241,7 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
 
       {/* Header */}
       <View style={styles.scoringHeader}>
-        <Pressable onPress={onBack} style={styles.backButton} hitSlop={12}>
+        <Pressable onPress={handleBack} style={styles.backButton} hitSlop={12}>
           <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
         </Pressable>
         <View style={styles.sportTitleRow}>
@@ -134,9 +250,14 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
             {sport.name}
           </Text>
         </View>
-        <Pressable onPress={resetScore} style={styles.resetButton} hitSlop={12}>
-          <RotateCcw size={20} color={colors.textSecondary} strokeWidth={2} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable onPress={resetScore} style={styles.resetButton} hitSlop={12}>
+            <RotateCcw size={20} color={colors.textSecondary} strokeWidth={2} />
+          </Pressable>
+          <Pressable onPress={finishGame} style={[styles.finishButton, { backgroundColor: sport.accentColor + '20' }]} hitSlop={8}>
+            <Check size={20} color={sport.accentColor} strokeWidth={2.5} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Score Display */}
@@ -197,6 +318,21 @@ export default function SportsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[(colorScheme ?? 'light') as 'light' | 'dark'];
   const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
+  const { session, setSportScores, addSportScore, updateSportScore, removeSportScore } = useStore();
+
+  // Subscribe to real-time score updates
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const unsubscribe = subscribeToScores(
+      session.user.id,
+      (score) => updateSportScore(score.id, score),
+      (score) => addSportScore(score),
+      (id) => removeSportScore(id),
+    );
+
+    return unsubscribe;
+  }, [session?.user?.id]);
 
   if (selectedSport) {
     return (
@@ -284,9 +420,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   resetButton: {
     width: 40,
     height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finishButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
