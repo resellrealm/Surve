@@ -7,6 +7,7 @@ import {
   useColorScheme,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
   FadeIn,
@@ -26,6 +27,7 @@ import { useStore } from '../../lib/store';
 import {
   createScore,
   updateScore,
+  fetchActiveScore,
   subscribeToScores,
 } from '../../lib/sportScores';
 import type { SportType } from '../../types';
@@ -81,14 +83,25 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
     let cancelled = false;
 
     async function init() {
-      if (!session?.user?.id) return;
+      if (!session?.user?.id) {
+        setLoading(false);
+        return;
+      }
 
       try {
-        const record = await createScore({
-          userId: session.user.id,
-          sportType: sport.id as SportType,
-        });
+        // Try to resume an existing active score first
+        let record = await fetchActiveScore(session.user.id, sport.id as SportType);
         if (cancelled) return;
+
+        // Only create a new score if none exists
+        if (!record) {
+          record = await createScore({
+            userId: session.user.id,
+            sportType: sport.id as SportType,
+          });
+          if (cancelled) return;
+        }
+
         setActiveScore(record);
         setScore({ home: record.home_score, away: record.away_score });
       } catch (err) {
@@ -324,7 +337,7 @@ export default function SportsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[(colorScheme ?? 'light') as 'light' | 'dark'];
   const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
-  const { session, setSportScores, addSportScore, updateSportScore, removeSportScore } = useStore();
+  const { session, sportScores, setSportScores, addSportScore, updateSportScore, removeSportScore } = useStore();
 
   // Subscribe to real-time score updates
   useEffect(() => {
@@ -333,7 +346,13 @@ export default function SportsScreen() {
     const unsubscribe = subscribeToScores(
       session.user.id,
       (score) => updateSportScore(score.id, score),
-      (score) => addSportScore(score),
+      (score) => {
+        // Deduplicate: only add if not already in store
+        const exists = useStore.getState().sportScores.some((s) => s.id === score.id);
+        if (!exists) {
+          addSportScore(score);
+        }
+      },
       (id) => removeSportScore(id),
     );
 
@@ -350,7 +369,7 @@ export default function SportsScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <Animated.View entering={FadeInDown.delay(100)} style={styles.header}>
         <Text style={[Typography.title2, { color: colors.text }]}>
           Score Tracker
@@ -370,7 +389,7 @@ export default function SportsScreen() {
           />
         ))}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -380,7 +399,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: 60,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
   },
   grid: {

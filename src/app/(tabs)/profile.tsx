@@ -64,7 +64,11 @@ export default function ProfileScreen() {
         style: 'destructive',
         onPress: async () => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          await supabase.auth.signOut();
+          const { error } = await supabase.auth.signOut();
+          if (error) {
+            Alert.alert('Error', 'Failed to sign out. Please try again.');
+            return;
+          }
           router.replace('/auth');
         },
       },

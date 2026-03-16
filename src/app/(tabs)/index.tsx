@@ -184,6 +184,8 @@ export default function HomeScreen() {
 
     if (data && !error) {
       setSurveys(data.map((s: any) => ({ ...s, response_count: s.total_responses ?? 0 })));
+    } else if (error) {
+      Alert.alert('Error', 'Failed to load surveys. Pull to refresh.');
     }
     setLoading(false);
   }, [session]);
@@ -209,11 +211,16 @@ export default function HomeScreen() {
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           removeSurvey(id);
-          await supabase.from('surveys').delete().eq('id', id);
+          const { error } = await supabase.from('surveys').delete().eq('id', id);
+          if (error) {
+            // Rollback: re-fetch surveys to restore the deleted item
+            fetchSurveys();
+            Alert.alert('Error', 'Failed to delete survey. Please try again.');
+          }
         },
       },
     ]);
-  }, [removeSurvey]);
+  }, [removeSurvey, fetchSurveys]);
 
   const activeSurveys = surveys.filter(s => s.status === 'active');
   const draftSurveys = surveys.filter(s => s.status === 'draft');
