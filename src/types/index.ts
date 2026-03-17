@@ -197,11 +197,12 @@ export type SportType =
   | 'basketball'
   | 'tennis'
   | 'cricket'
-  | 'baseball'
-  | 'hockey'
+  | 'table_tennis'
+  | 'badminton'
   | 'volleyball'
-  | 'soccer'
-  | 'badminton';
+  | 'baseball'
+  | 'american_football'
+  | 'general';
 
 export type ScoreStatus = 'in_progress' | 'completed' | 'paused';
 
@@ -228,6 +229,140 @@ export interface SportScoreMetadata {
   sets?: { set: number; home: number; away: number }[];
   innings?: { inning: number; home: number; away: number }[];
   [key: string]: unknown;
+}
+
+// ─── Profile (Gaming/Social Layer) ──────────────────────────────────────────
+
+export interface Profile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  favorite_sports: string[];
+  total_wins: number;
+  total_losses: number;
+  total_draws: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Friendships ────────────────────────────────────────────────────────────
+
+export type FriendshipStatus = 'pending' | 'accepted' | 'blocked' | 'declined';
+
+export interface Friendship {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: FriendshipStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Games ──────────────────────────────────────────────────────────────────
+
+export type GameStatus = 'active' | 'completed' | 'paused' | 'cancelled';
+export type GameWinner = 'team_a' | 'team_b' | 'draw' | null;
+
+export interface Game {
+  id: string;
+  sport: SportType;
+  team_a_name: string;
+  team_b_name: string;
+  team_a_score: number;
+  team_b_score: number;
+  team_a_user_id: string | null;
+  team_b_user_id: string | null;
+  status: GameStatus;
+  winner: GameWinner;
+  scoring_state: Record<string, unknown>;
+  started_at: string;
+  ended_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Game Events ────────────────────────────────────────────────────────────
+
+export type GameEventType =
+  | 'score'
+  | 'undo'
+  | 'timeout'
+  | 'period_end'
+  | 'period_start'
+  | 'set_end'
+  | 'game_start'
+  | 'game_end';
+
+export type GameEventTeam = 'team_a' | 'team_b' | 'none';
+
+export interface GameEvent {
+  id: string;
+  game_id: string;
+  event_type: GameEventType;
+  team: GameEventTeam;
+  points: number;
+  label: string | null;
+  scored_by: string | null;
+  snapshot: Record<string, unknown> | null;
+  created_at: string;
+}
+
+// ─── Game Invites ───────────────────────────────────────────────────────────
+
+export type GameInviteStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+
+export interface GameInvite {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  sport: string;
+  status: GameInviteStatus;
+  game_id: string | null;
+  message: string | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Stats ──────────────────────────────────────────────────────────────────
+
+export interface HeadToHeadStats {
+  total_games: number;
+  user_wins: number;
+  opponent_wins: number;
+  draws: number;
+  current_streak: number;
+  streak_holder: 'user' | 'opponent' | 'draw' | 'none';
+}
+
+export interface HeadToHeadBySport {
+  sport: string;
+  total_games: number;
+  user_wins: number;
+  opponent_wins: number;
+  draws: number;
+  last_played: string | null;
+}
+
+export interface UserStreak {
+  streak_count: number;
+  streak_type: 'win' | 'loss' | 'draw' | 'none';
+  last_game_at: string | null;
+}
+
+export interface GameScoreSummary {
+  game_id: string;
+  sport: SportType;
+  team_a_name: string;
+  team_a_score: number;
+  team_b_name: string;
+  team_b_score: number;
+  status: GameStatus;
+  winner: GameWinner;
+  started_at: string;
+  updated_at: string;
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
