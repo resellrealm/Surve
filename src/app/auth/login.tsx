@@ -117,7 +117,7 @@ export default function LoginScreen() {
           {error && (
             <Animated.View
               entering={FadeInDown.duration(400)}
-              style={styles.errorContainer}
+              style={[styles.errorContainer, { backgroundColor: colors.errorLight }]}
             >
               <AlertCircle size={18} color="#DC2626" strokeWidth={2} />
               <Text style={styles.errorText}>{error}</Text>
@@ -240,7 +240,6 @@ const styles = StyleSheet.create({
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.lg,

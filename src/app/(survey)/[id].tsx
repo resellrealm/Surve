@@ -210,13 +210,13 @@ export default function SurveyDetailScreen() {
             <View
               style={[
                 styles.statusBadge,
-                { backgroundColor: isActive ? '#ECFDF5' : '#FEF3F2' },
+                { backgroundColor: isActive ? colors.successLight : colors.errorLight },
               ]}
             >
               <View
-                style={[styles.statusDot, { backgroundColor: isActive ? '#10B981' : '#EF4444' }]}
+                style={[styles.statusDot, { backgroundColor: isActive ? colors.success : colors.error }]}
               />
-              <Text style={[styles.statusText, { color: isActive ? '#059669' : '#DC2626' }]}>
+              <Text style={[styles.statusText, { color: isActive ? colors.success : colors.error }]}>
                 {isActive ? 'Active' : 'Closed'}
               </Text>
             </View>
@@ -306,9 +306,9 @@ export default function SurveyDetailScreen() {
                 <View style={styles.questionNumberBadge}>
                   <Text style={styles.questionNumberText}>{index + 1}</Text>
                 </View>
-                <View style={styles.questionTypeBadge}>
-                  <TypeIcon size={14} color="#475569" strokeWidth={2} />
-                  <Text style={styles.questionTypeText}>{typeInfo.label}</Text>
+                <View style={[styles.questionTypeBadge, { backgroundColor: isDark ? colors.surfaceSecondary : '#F1F5F9' }]}>
+                  <TypeIcon size={14} color={isDark ? colors.textSecondary : '#475569'} strokeWidth={2} />
+                  <Text style={[styles.questionTypeText, { color: isDark ? colors.textSecondary : '#475569' }]}>{typeInfo.label}</Text>
                 </View>
               </View>
               <Text style={[styles.questionText, { color: isDark ? colors.text : '#111827' }]}>
@@ -518,14 +518,12 @@ const styles = StyleSheet.create({
   questionTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
   },
   questionTypeText: {
-    color: '#475569',
     fontSize: 12,
     fontWeight: '600',
   },

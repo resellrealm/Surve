@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Surve — App Store Screenshots Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0F172A;
+    color: #F1F5F9;
+    font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+    padding: 40px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 16px;
+    color: #94A3B8;
+    margin-bottom: 48px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .card {
+    background: #1E293B;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: transform 0.2s;
+  }
+  .card:hover { transform: scale(1.02); }
+  .card img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .card-label {
+    padding: 16px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #94A3B8;
+  }
+  .card-label span {
+    color: #F1F5F9;
+    font-size: 16px;
+    display: block;
+    margin-top: 4px;
+  }
+  .specs {
+    text-align: center;
+    margin-top: 48px;
+    color: #475569;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <h1>Surve — App Store Screenshots</h1>
+  <p class="subtitle">iPhone 6.7" — 1290 × 2796 pixels</p>
+  <div class="grid">
+    <div class="card">
+      <img src="appstore/01_home_dashboard.png" alt="Home Dashboard">
+      <div class="card-label">Screenshot 1<span>Home Dashboard</span></div>
+    </div>
+    <div class="card">
+      <img src="appstore/02_create_survey.png" alt="Create Survey">
+      <div class="card-label">Screenshot 2<span>Create Survey</span></div>
+    </div>
+    <div class="card">
+      <img src="appstore/03_survey_detail.png" alt="Survey Detail">
+      <div class="card-label">Screenshot 3<span>Survey Detail & Analytics</span></div>
+    </div>
+    <div class="card">
+      <img src="appstore/04_responses.png" alt="Responses">
+      <div class="card-label">Screenshot 4<span>Response List</span></div>
+    </div>
+    <div class="card">
+      <img src="appstore/05_question_types.png" alt="Question Types">
+      <div class="card-label">Screenshot 5<span>Question Types</span></div>
+    </div>
+    <div class="card">
+      <img src="appstore/06_profile.png" alt="Profile">
+      <div class="card-label">Screenshot 6<span>Profile & Settings</span></div>
+    </div>
+  </div>
+  <p class="specs">Generated for App Store Connect — iPhone 6.7" display</p>
+</body>
+</html>

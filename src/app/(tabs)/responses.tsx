@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { MessageSquare, ChevronRight, MessagesSquare } from 'lucide-react-native';
+import { ChevronRight, MessagesSquare } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -154,19 +154,19 @@ export default function ResponsesScreen() {
               <View
                 style={[
                   styles.statusBadge,
-                  { backgroundColor: item.status === 'active' ? '#ECFDF5' : '#FEF3F2' },
+                  { backgroundColor: item.status === 'active' ? colors.successLight : colors.errorLight },
                 ]}
               >
                 <View
                   style={[
                     styles.statusDot,
-                    { backgroundColor: item.status === 'active' ? '#10B981' : '#EF4444' },
+                    { backgroundColor: item.status === 'active' ? colors.success : colors.error },
                   ]}
                 />
                 <Text
                   style={[
                     styles.statusText,
-                    { color: item.status === 'active' ? '#059669' : '#DC2626' },
+                    { color: item.status === 'active' ? colors.success : colors.error },
                   ]}
                 >
                   {item.status === 'active' ? 'Active' : 'Closed'}

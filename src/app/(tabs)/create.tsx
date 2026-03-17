@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -304,7 +304,7 @@ export default function CreateSurveyScreen() {
           style={[styles.questionCard, { backgroundColor: cardBg, borderColor: inputBorder }]}
         >
           <View style={styles.questionHeader}>
-            <Text style={[styles.questionNumber, { color: '#475569' }]}>Q{index + 1}</Text>
+            <Text style={[styles.questionNumber, { color: colors.primary }]}>Q{index + 1}</Text>
             <Pressable onPress={() => removeQuestion(question.id)} hitSlop={8}>
               <Trash2 size={20} color="#EF4444" strokeWidth={2} />
             </Pressable>
@@ -378,7 +378,7 @@ export default function CreateSurveyScreen() {
         ]}
       >
         <PlusCircle size={22} color="#475569" strokeWidth={2} />
-        <Text style={styles.addQuestionText}>Add Question</Text>
+        <Text style={[styles.addQuestionText, { color: colors.primary }]}>Add Question</Text>
       </Pressable>
     </Animated.View>
   );
@@ -627,7 +627,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   addQuestionText: {
-    color: '#475569',
     fontSize: Typography.body.fontSize,
     fontWeight: '600',
   },
