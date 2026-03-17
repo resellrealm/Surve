@@ -81,6 +81,14 @@ export default function RootLayout() {
           name="(survey)"
           options={{ headerShown: false }}
         />
+        <Stack.Screen
+          name="friends"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="history"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
       </Stack>
     </GestureHandlerRootView>
   );

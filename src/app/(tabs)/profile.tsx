@@ -26,6 +26,8 @@ import {
   LogOut,
   Flame,
   Award,
+  Users,
+  History,
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Glass } from '../../constants/theme';
 import { GlassCard } from '../../components/ui/GlassCard';
@@ -173,6 +175,40 @@ export default function ProfileScreen() {
             </View>
           </GlassCard>
         </Animated.View>
+
+        {/* Social Section */}
+        <View style={styles.sectionHeader}>
+          <Animated.Text
+            entering={FadeInDown.duration(400).delay(120)}
+            style={[styles.sectionTitle, { color: colors.textSecondary }]}
+          >
+            SOCIAL
+          </Animated.Text>
+        </View>
+
+        <GlassCard delay={140} style={styles.settingsCard}>
+          <SettingItem
+            icon={<Users size={20} color="#475569" strokeWidth={2} />}
+            label="Friends"
+            isDark={isDark}
+            colors={colors}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/friends');
+            }}
+          />
+          <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
+          <SettingItem
+            icon={<History size={20} color="#475569" strokeWidth={2} />}
+            label="Game History"
+            isDark={isDark}
+            colors={colors}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/history');
+            }}
+          />
+        </GlassCard>
 
         {/* Account Settings Card */}
         <View style={styles.sectionHeader}>
