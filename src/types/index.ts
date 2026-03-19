@@ -107,12 +107,22 @@ export type Question =
   | NPSQuestion
   | YesNoQuestion;
 
+// ─── Survey Teams ────────────────────────────────────────────────────────────
+
+export interface SurveyTeam {
+  id: string;
+  survey_id: string;
+  name: string;
+  created_at: string;
+}
+
 // ─── Response ────────────────────────────────────────────────────────────────
 
 export interface SurveyResponse {
   id: string;
   survey_id: string;
   respondent_id: string | null;
+  team_id: string | null;
   answers: Answer[];
   started_at: string;
   completed_at: string | null;
