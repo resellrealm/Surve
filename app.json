@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "CreatorLink",
+    "slug": "creatorlink",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "creatorlink",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1c2d6b"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.creatorlink.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1c2d6b",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "package": "com.creatorlink.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      ["expo-router", { "root": "./src/app" }],
+      "expo-secure-store",
+      "expo-font",
+      "expo-haptics",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1c2d6b",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
