@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, View, Text, Pressable, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -10,46 +10,39 @@ import { Mail, Lock, ArrowRight } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
-import { mockCreatorSession, mockBusinessSession } from '../../lib/mockData';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { Typography, Spacing, Layout } from '../../constants/theme';
+import { Typography, Spacing } from '../../constants/theme';
 
 export default function LoginScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
-  const { login } = useStore();
+  const { signIn } = useStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = useCallback(() => {
+  const handleLogin = useCallback(async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter your email and password.');
+      return;
+    }
+
     setLoading(true);
     haptics.medium();
 
-    // Mock login - simulate network delay
-    setTimeout(() => {
-      // Default to creator role for demo
-      login(mockCreatorSession);
-      setLoading(false);
+    const success = await signIn(email.trim(), password);
+    setLoading(false);
+
+    if (success) {
       router.replace('/(tabs)');
-    }, 800);
-  }, [haptics, login, router]);
-
-  const handleDemoCreator = useCallback(() => {
-    haptics.light();
-    login(mockCreatorSession);
-    router.replace('/(tabs)');
-  }, [haptics, login, router]);
-
-  const handleDemoBusiness = useCallback(() => {
-    haptics.light();
-    login(mockBusinessSession);
-    router.replace('/(tabs)');
-  }, [haptics, login, router]);
+    } else {
+      Alert.alert('Login Failed', 'Invalid email or password. Please try again.');
+    }
+  }, [haptics, signIn, router, email, password]);
 
   return (
     <KeyboardAvoidingView
@@ -59,7 +52,7 @@ export default function LoginScreen() {
       <View style={[styles.content, { paddingTop: insets.top + 60 }]}>
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
           <Text style={[styles.brand, { color: colors.primary }]}>
-            CreatorLink
+            Surve
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Connect. Create. Collaborate.
@@ -96,31 +89,6 @@ export default function LoginScreen() {
             fullWidth
             icon={<ArrowRight size={20} color={colors.onPrimary} strokeWidth={2} />}
           />
-        </Animated.View>
-
-        <Animated.View
-          entering={FadeInUp.duration(600).delay(500)}
-          style={styles.demoSection}
-        >
-          <Text style={[styles.demoLabel, { color: colors.textTertiary }]}>
-            Quick Demo Access
-          </Text>
-          <View style={styles.demoButtons}>
-            <Button
-              title="Demo as Creator"
-              onPress={handleDemoCreator}
-              variant="outline"
-              size="md"
-              style={styles.demoButton}
-            />
-            <Button
-              title="Demo as Business"
-              onPress={handleDemoBusiness}
-              variant="secondary"
-              size="md"
-              style={styles.demoButton}
-            />
-          </View>
         </Animated.View>
 
         <Animated.View
@@ -163,24 +131,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: Spacing.xs,
-  },
-  demoSection: {
-    marginTop: Spacing.xxxl,
-    alignItems: 'center',
-  },
-  demoLabel: {
-    ...Typography.caption1,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: Spacing.md,
-  },
-  demoButtons: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    width: '100%',
-  },
-  demoButton: {
-    flex: 1,
   },
   bottomRow: {
     flexDirection: 'row',

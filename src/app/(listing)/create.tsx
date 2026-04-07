@@ -20,7 +20,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { ListingFilterChips } from '../../components/listing/ListingFilters';
-import { platforms, categories } from '../../lib/mockData';
+import { platforms, categories } from '../../constants/filters';
 import { Typography, Spacing, BorderRadius, Layout } from '../../constants/theme';
 
 export default function CreateListingScreen() {

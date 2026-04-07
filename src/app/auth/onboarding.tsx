@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { StyleSheet, View, Text, Pressable, Alert } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
@@ -12,13 +12,10 @@ import {
   Camera,
   Building2,
   ArrowRight,
-  Instagram,
-  Star,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
-import { mockCreatorSession, mockBusinessSession } from '../../lib/mockData';
 import { Button } from '../../components/ui/Button';
 import {
   Typography,
@@ -121,22 +118,43 @@ export default function OnboardingScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { login } = useStore();
+  const { signUp } = useStore();
+  const params = useLocalSearchParams<{
+    fullName: string;
+    email: string;
+    password: string;
+  }>();
+
   const [selectedRole, setSelectedRole] = React.useState<
     'creator' | 'business' | null
   >(null);
+  const [loading, setLoading] = React.useState(false);
 
-  const handleContinue = useCallback(() => {
+  const handleContinue = useCallback(async () => {
     if (!selectedRole) return;
+
+    const { fullName, email, password } = params;
+
+    if (!fullName || !email || !password) {
+      Alert.alert('Error', 'Missing registration details. Please go back and try again.');
+      return;
+    }
+
+    setLoading(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    if (selectedRole === 'creator') {
-      login(mockCreatorSession);
+    const success = await signUp(email, password, fullName, selectedRole);
+    setLoading(false);
+
+    if (success) {
+      router.replace('/(tabs)');
     } else {
-      login(mockBusinessSession);
+      Alert.alert(
+        'Sign Up Failed',
+        'Could not create your account. The email may already be in use.'
+      );
     }
-    router.replace('/(tabs)');
-  }, [selectedRole, login, router]);
+  }, [selectedRole, params, signUp, router]);
 
   return (
     <View
@@ -207,6 +225,7 @@ export default function OnboardingScreen() {
         <Button
           title="Get Started"
           onPress={handleContinue}
+          loading={loading}
           size="lg"
           fullWidth
           disabled={!selectedRole}

@@ -1,4 +1,4 @@
-# CreatorLink — Creator-Business Connection Platform
+# Surve — Creator-Business Connection Platform
 
 ## Project Info
 - React Native + Expo + TypeScript

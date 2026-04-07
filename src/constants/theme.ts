@@ -2,7 +2,7 @@ import { Dimensions } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// CreatorLink — Uber-like dark with blue accent palette
+// Surve — Uber-like dark with blue accent palette
 // Premium, clean, professional creator-business platform
 export const Colors = {
   light: {

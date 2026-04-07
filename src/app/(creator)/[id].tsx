@@ -26,7 +26,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
 import { StatsRow } from '../../components/creator/StatsRow';
-import { mockCreators, mockReviews } from '../../lib/mockData';
+import * as api from '../../lib/api';
 import {
   Typography,
   Spacing,
@@ -98,15 +98,20 @@ export default function CreatorProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const creator = useMemo(
-    () => mockCreators.find((c) => c.id === id),
-    [id]
-  );
+  const [creator, setCreator] = React.useState<Creator | null>(null);
+  const [creatorReviews, setCreatorReviews] = React.useState<Review[]>([]);
 
-  const creatorReviews = useMemo(
-    () => mockReviews.filter((r) => r.target_id === id),
-    [id]
-  );
+  React.useEffect(() => {
+    if (!id) return;
+    // Fetch creator by profile ID — need to get all creators and find by id
+    api.getCreators().then((creators) => {
+      const found = creators.find((c) => c.id === id) ?? null;
+      setCreator(found);
+      if (found) {
+        api.getReviews(found.user_id).then(setCreatorReviews);
+      }
+    });
+  }, [id]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

@@ -10,6 +10,7 @@ import type {
   UserRole,
 } from '../types';
 import type { ColorScheme } from '../hooks/useTheme';
+import * as api from './api';
 
 // ─── Auth Slice ──────────────────────────────────────────────────────────────
 
@@ -27,6 +28,14 @@ interface AuthActions {
   setInitialized: (initialized: boolean) => void;
   login: (session: Session) => void;
   logout: () => void;
+  signIn: (email: string, password: string) => Promise<boolean>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    role: UserRole
+  ) => Promise<boolean>;
+  restoreSession: () => Promise<void>;
 }
 
 // ─── Listings Slice ──────────────────────────────────────────────────────────
@@ -47,6 +56,7 @@ interface ListingsActions {
   setFilters: (filters: Partial<ListingFilters>) => void;
   resetFilters: () => void;
   setListingsLoading: (loading: boolean) => void;
+  fetchListings: () => Promise<void>;
 }
 
 // ─── Bookings Slice ──────────────────────────────────────────────────────────
@@ -63,6 +73,7 @@ interface BookingsActions {
   removeBooking: (id: string) => void;
   setBookingsLoading: (loading: boolean) => void;
   getBookingsByStatus: (status: BookingStatus) => Booking[];
+  fetchBookings: () => Promise<void>;
 }
 
 // ─── Messages Slice ──────────────────────────────────────────────────────────
@@ -77,6 +88,7 @@ interface MessagesActions {
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
   setMessagesLoading: (loading: boolean) => void;
   getUnreadCount: () => number;
+  fetchConversations: () => Promise<void>;
 }
 
 // ─── UI Slice ────────────────────────────────────────────────────────────────
@@ -128,14 +140,61 @@ export const useStore = create<AppStore>((set, get) => ({
       user: session.user,
       loading: false,
     }),
-  logout: () =>
+  logout: () => {
+    api.signOut();
     set({
       user: null,
       session: null,
       selectedListing: null,
       bookings: [],
       conversations: [],
-    }),
+    });
+  },
+
+  signIn: async (email, password) => {
+    set({ loading: true });
+    const result = await api.signIn(email, password);
+    if (result) {
+      set({
+        user: result.user,
+        session: result.session,
+        loading: false,
+      });
+      return true;
+    }
+    set({ loading: false });
+    return false;
+  },
+
+  signUp: async (email, password, fullName, role) => {
+    set({ loading: true });
+    const result = await api.signUp(email, password, fullName, role);
+    if (result) {
+      set({
+        user: result.user,
+        session: result.session,
+        loading: false,
+      });
+      return true;
+    }
+    set({ loading: false });
+    return false;
+  },
+
+  restoreSession: async () => {
+    set({ loading: true });
+    const result = await api.getSession();
+    if (result) {
+      set({
+        user: result.user,
+        session: result.session,
+        loading: false,
+        initialized: true,
+      });
+    } else {
+      set({ loading: false, initialized: true });
+    }
+  },
 
   // Listings state
   listings: [],
@@ -169,6 +228,12 @@ export const useStore = create<AppStore>((set, get) => ({
   resetFilters: () => set({ filters: defaultFilters }),
   setListingsLoading: (loading) => set({ listingsLoading: loading }),
 
+  fetchListings: async () => {
+    set({ listingsLoading: true });
+    const listings = await api.getListings();
+    set({ listings, listingsLoading: false });
+  },
+
   // Bookings state
   bookings: [],
   bookingsLoading: false,
@@ -192,6 +257,14 @@ export const useStore = create<AppStore>((set, get) => ({
     return get().bookings.filter((b) => b.status === status);
   },
 
+  fetchBookings: async () => {
+    const userId = get().user?.id;
+    if (!userId) return;
+    set({ bookingsLoading: true });
+    const bookings = await api.getBookings(userId);
+    set({ bookings, bookingsLoading: false });
+  },
+
   // Messages state
   conversations: [],
   messagesLoading: false,
@@ -207,6 +280,14 @@ export const useStore = create<AppStore>((set, get) => ({
   setMessagesLoading: (loading) => set({ messagesLoading: loading }),
   getUnreadCount: () => {
     return get().conversations.reduce((sum, c) => sum + c.unread_count, 0);
+  },
+
+  fetchConversations: async () => {
+    const userId = get().user?.id;
+    if (!userId) return;
+    set({ messagesLoading: true });
+    const conversations = await api.getConversations(userId);
+    set({ conversations, messagesLoading: false });
   },
 
   // UI state

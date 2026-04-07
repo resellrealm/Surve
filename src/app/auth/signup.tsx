@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +15,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowLeft, Mail, Lock, User, ArrowRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
+import { useStore } from '../../lib/store';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Typography, Spacing } from '../../constants/theme';
@@ -30,14 +32,35 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleSignup = useCallback(() => {
+    if (!fullName.trim() || !email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please fill in all fields.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match.');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters.');
+      return;
+    }
+
     setLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    setTimeout(() => {
-      setLoading(false);
-      router.push('/auth/onboarding');
-    }, 800);
-  }, [router]);
+    // Navigate to onboarding where role will be selected and account created
+    setLoading(false);
+    router.push({
+      pathname: '/auth/onboarding',
+      params: {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+      },
+    });
+  }, [router, fullName, email, password, confirmPassword]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

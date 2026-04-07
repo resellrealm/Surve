@@ -11,7 +11,8 @@ import { SearchBar } from '../../components/ui/SearchBar';
 import { ListingCard } from '../../components/listing/ListingCard';
 import { CreatorCard } from '../../components/creator/CreatorCard';
 import { ListingFilterChips } from '../../components/listing/ListingFilters';
-import { platforms, categories, mockCreators } from '../../lib/mockData';
+import { platforms, categories } from '../../constants/filters';
+import * as api from '../../lib/api';
 import { Typography, Spacing, BorderRadius, Layout } from '../../constants/theme';
 import type { Listing, Creator, Platform as PlatformType } from '../../types';
 
@@ -36,6 +37,13 @@ export default function SearchScreen() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [showSortOptions, setShowSortOptions] = useState(false);
+  const [creators, setCreators] = useState<Creator[]>([]);
+
+  React.useEffect(() => {
+    if (isBusiness || searchMode === 'creators') {
+      api.getCreators().then(setCreators);
+    }
+  }, [isBusiness, searchMode]);
 
   const filteredListings = useMemo(() => {
     let results = [...listings];
@@ -76,7 +84,7 @@ export default function SearchScreen() {
   }, [listings, searchQuery, selectedPlatform, selectedCategory, sortBy]);
 
   const filteredCreators = useMemo(() => {
-    let results = [...mockCreators];
+    let results = [...creators];
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -95,7 +103,7 @@ export default function SearchScreen() {
     }
 
     return results;
-  }, [searchQuery, selectedCategory]);
+  }, [creators, searchQuery, selectedCategory]);
 
   const handleListingPress = useCallback(
     (listing: Listing) => {

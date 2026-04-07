@@ -18,7 +18,8 @@ import { ListingCard } from '../../components/listing/ListingCard';
 import { ListingFilterChips } from '../../components/listing/ListingFilters';
 import { CreatorCard } from '../../components/creator/CreatorCard';
 import { Avatar } from '../../components/ui/Avatar';
-import { categories, mockCreators } from '../../lib/mockData';
+import { categories } from '../../constants/filters';
+import * as api from '../../lib/api';
 import { Typography, Spacing, BorderRadius, Layout } from '../../constants/theme';
 import type { Listing, Category, Creator } from '../../types';
 
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const isBusiness = user?.role === 'business';
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [topCreators, setTopCreators] = useState<Creator[]>([]);
 
   const filteredListings = useMemo(() => {
     let items = listings;
@@ -43,13 +45,19 @@ export default function HomeScreen() {
   }, [listings, selectedCategory, isBusiness, user?.id]);
 
   // Top creators for business home
-  const topCreators = useMemo(() => mockCreators.slice(0, 5), []);
+  React.useEffect(() => {
+    if (isBusiness) {
+      api.getCreators().then((c) => setTopCreators(c.slice(0, 5)));
+    }
+  }, [isBusiness]);
 
-  const handleRefresh = useCallback(() => {
+  const { fetchListings } = useStore();
+  const handleRefresh = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  }, []);
+    await fetchListings();
+    setRefreshing(false);
+  }, [fetchListings]);
 
   const handleListingPress = useCallback(
     (listing: Listing) => {

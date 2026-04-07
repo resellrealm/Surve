@@ -36,7 +36,7 @@ import { Badge } from '../../components/ui/Badge';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
 import { StatsRow } from '../../components/creator/StatsRow';
 import { Card } from '../../components/ui/Card';
-import { mockCreators, mockBusinesses } from '../../lib/mockData';
+import * as api from '../../lib/api';
 import {
   Typography,
   Spacing,
@@ -129,12 +129,17 @@ export default function ProfileScreen() {
   const { user, logout } = useStore();
 
   const isCreator = user?.role === 'creator';
-  const creatorData = isCreator
-    ? mockCreators.find((c) => c.user_id === user?.id) ?? mockCreators[0]
-    : null;
-  const businessData = !isCreator
-    ? mockBusinesses.find((b) => b.user_id === user?.id) ?? mockBusinesses[0]
-    : null;
+  const [creatorData, setCreatorData] = React.useState<import('../../types').Creator | null>(null);
+  const [businessData, setBusinessData] = React.useState<import('../../types').Business | null>(null);
+
+  React.useEffect(() => {
+    if (!user) return;
+    if (isCreator) {
+      api.getCreatorProfile(user.id).then(setCreatorData);
+    } else {
+      api.getBusinessProfile(user.id).then(setBusinessData);
+    }
+  }, [user, isCreator]);
 
   const handleLogout = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -395,7 +400,7 @@ export default function ProfileScreen() {
             }
             title="Help & Support"
             subtitle="FAQ, contact us"
-            onPress={() => Alert.alert('Help & Support', 'Contact us at support@creatorlink.app')}
+            onPress={() => Alert.alert('Help & Support', 'Contact us at support@surve.app')}
           />
           <View
             style={[
@@ -415,7 +420,7 @@ export default function ProfileScreen() {
       </Animated.View>
 
       <Text style={[styles.version, { color: colors.textTertiary }]}>
-        CreatorLink v1.0.0
+        Surve v1.0.0
       </Text>
     </ScrollView>
   );

@@ -22,7 +22,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { Avatar } from '../../components/ui/Avatar';
-import { mockMessages } from '../../lib/mockData';
+import * as api from '../../lib/api';
 import {
   Typography,
   Spacing,
@@ -125,13 +125,15 @@ export default function ChatDetailScreen() {
     [conversations, id]
   );
 
-  const messages = useMemo(() => {
-    if (!id) return [];
-    return mockMessages[id] ?? [];
-  }, [id]);
-
   const [inputText, setInputText] = useState('');
-  const [localMessages, setLocalMessages] = useState<Message[]>(messages);
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+
+  React.useEffect(() => {
+    if (!id) return;
+    api.getMessages(id).then((msgs) => {
+      setLocalMessages(msgs);
+    });
+  }, [id]);
   const flatListRef = useRef<FlatList>(null);
 
   const sendScale = useSharedValue(1);
@@ -162,7 +164,8 @@ export default function ChatDetailScreen() {
       sendScale.value = withSpring(1, Springs.gentle);
     });
 
-    const newMessage: Message = {
+    // Optimistic local message
+    const optimisticMsg: Message = {
       id: `msg-local-${Date.now()}`,
       conversation_id: id,
       sender_id: currentUserId,
@@ -171,8 +174,11 @@ export default function ChatDetailScreen() {
       created_at: new Date().toISOString(),
     };
 
-    setLocalMessages((prev) => [...prev, newMessage]);
+    setLocalMessages((prev) => [...prev, optimisticMsg]);
     setInputText('');
+
+    // Send via API
+    api.sendMessage(id, currentUserId, trimmed);
 
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
