@@ -2,7 +2,7 @@ import { Dimensions } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Surve — Clean grey + off-white survey app palette
+// Point! — Clean grey + off-white survey app palette
 // Minimal, professional, premium survey tool
 export const Colors = {
   light: {

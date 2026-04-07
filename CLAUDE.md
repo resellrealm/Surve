@@ -1,4 +1,4 @@
-# Surve — iOS Survey App
+# Point! — iOS Survey App
 
 ## Project Info
 - React Native + Expo + TypeScript

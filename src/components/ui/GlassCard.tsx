@@ -7,6 +7,7 @@ import Animated, {
   FadeInDown,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { Glass, BorderRadius, Spacing, Springs } from '../../constants/theme';
 
@@ -31,13 +32,19 @@ export function GlassCard({ children, style, onPress, delay = 0, intensity = 40 
 
   const handlePressIn = useCallback(() => {
     if (!onPress) return;
-    scale.value = withSpring(0.98, Springs.tab);
+    scale.value = withSpring(0.97, Springs.snappy);
   }, [onPress, scale]);
 
   const handlePressOut = useCallback(() => {
     if (!onPress) return;
-    scale.value = withSpring(1, Springs.tab);
+    scale.value = withSpring(1, Springs.snappy);
   }, [onPress, scale]);
+
+  const handlePress = useCallback(() => {
+    if (!onPress) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress();
+  }, [onPress]);
 
   const containerStyle: ViewStyle = {
     borderRadius: BorderRadius.lg,
@@ -60,7 +67,7 @@ export function GlassCard({ children, style, onPress, delay = 0, intensity = 40 
     return (
       <Animated.View entering={FadeInDown.duration(400).delay(delay).springify()}>
         <AnimatedPressable
-          onPress={onPress}
+          onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           style={[containerStyle, animatedStyle]}

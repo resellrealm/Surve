@@ -60,7 +60,10 @@ function SurveyCardSkeleton({ index }: { index: number }) {
 function SwipeDeleteAction({ onDelete }: { onDelete: () => void }) {
   return (
     <Pressable
-      onPress={onDelete}
+      onPress={() => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        onDelete();
+      }}
       style={styles.swipeDeleteAction}
     >
       <Trash2 size={20} color="#FFFFFF" strokeWidth={2} />
@@ -126,6 +129,7 @@ function SurveyCard({
         overshootRight={false}
         friction={2}
         rightThreshold={40}
+        onSwipeableOpen={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
       >
         <AnimatedPressable
           style={[styles.surveyCard, { backgroundColor: colors.card, borderColor: colors.borderLight }, animatedStyle]}

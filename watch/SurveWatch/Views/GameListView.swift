@@ -54,7 +54,7 @@ struct GameListView: View {
                 .padding(.vertical)
             }
         }
-        .navigationTitle("Surve")
+        .navigationTitle("Point!")
     }
 }
 

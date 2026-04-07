@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,16 @@ import {
   Switch,
   Alert,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -29,23 +35,84 @@ import {
   Users,
   History,
 } from 'lucide-react-native';
-import { Colors, Typography, Spacing, BorderRadius, Glass } from '../../constants/theme';
+import { Colors, Typography, Spacing, BorderRadius, Glass, Springs } from '../../constants/theme';
 import { GlassCard } from '../../components/ui/GlassCard';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../lib/store';
+import { fetchScores } from '../../lib/sportScores';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const AVATAR_SIZE = 104;
 const RING_SIZE = AVATAR_SIZE + 8;
+
+function calculateStreak(scores: Array<{ completed_at: string | null; created_at: string }>): number {
+  if (scores.length === 0) return 0;
+
+  // Get unique days with activity (using completed_at or created_at)
+  const daySet = new Set<string>();
+  scores.forEach((s) => {
+    const dateStr = s.completed_at ?? s.created_at;
+    if (dateStr) {
+      const d = new Date(dateStr);
+      daySet.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    }
+  });
+
+  const days = Array.from(daySet)
+    .map((key) => {
+      const [y, m, d] = key.split('-').map(Number);
+      return new Date(y, m, d);
+    })
+    .sort((a, b) => b.getTime() - a.getTime());
+
+  if (days.length === 0) return 0;
+
+  // Check from today/yesterday backwards
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const mostRecent = new Date(days[0]);
+  mostRecent.setHours(0, 0, 0, 0);
+
+  // If most recent activity is not today or yesterday, streak is broken
+  if (mostRecent.getTime() < yesterday.getTime()) return 0;
+
+  let streak = 1;
+  for (let i = 1; i < days.length; i++) {
+    const prev = new Date(days[i - 1]);
+    prev.setHours(0, 0, 0, 0);
+    const curr = new Date(days[i]);
+    curr.setHours(0, 0, 0, 0);
+    const diffMs = prev.getTime() - curr.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = isDark ? Colors.dark : Colors.light;
-  const { session, user, surveys, themePreference, setThemePreference } = useStore();
+  const { session, user, surveys, themePreference, setThemePreference, notificationsEnabled, setNotificationsEnabled, sportScores, setSportScores } = useStore();
+  const settingsRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const darkMode = themePreference === 'dark' || (themePreference === 'system' && isDark);
-  const [notifications, setNotifications] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Real data
+  const [totalResponses, setTotalResponses] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
 
   const userEmail = user?.email || session?.user?.email || '';
   const fullName = user?.full_name || 'User';
@@ -58,14 +125,67 @@ export default function ProfileScreen() {
 
   const surveysCreated = surveys?.length ?? 0;
 
+  const fetchProfileData = useCallback(async () => {
+    if (!session?.user?.id) return;
+    try {
+      // Fetch total responses across all surveys
+      const { data: surveyData } = await supabase
+        .from('surveys')
+        .select('responses(count)')
+        .eq('user_id', session.user.id);
+
+      if (surveyData) {
+        const count = surveyData.reduce((acc: number, s: any) => {
+          return acc + (s.responses?.[0]?.count || 0);
+        }, 0);
+        setTotalResponses(count);
+      }
+
+      // Fetch sport scores for streak calculation
+      const scores = await fetchScores(session.user.id);
+      setSportScores(scores);
+      setStreak(calculateStreak(scores));
+    } catch (err) {
+      console.error('Failed to fetch profile data:', err);
+    }
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    fetchProfileData();
+  }, [fetchProfileData]);
+
+  // Also recalculate streak when sportScores change
+  useEffect(() => {
+    setStreak(calculateStreak(sportScores));
+  }, [sportScores]);
+
+  const onRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefreshing(true);
+    await fetchProfileData();
+    setRefreshing(false);
+  }, [fetchProfileData]);
+
+  const handleSettingsPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Scroll to the settings section
+    scrollRef.current?.scrollTo({ y: 400, animated: true });
+  }, []);
+
+  const showInfoAlert = useCallback((title: string, message: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(title, message, [{ text: 'OK' }]);
+  }, []);
+
   const handleSignOut = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           const { error } = await supabase.auth.signOut();
           if (error) {
             Alert.alert('Error', 'Failed to sign out. Please try again.');
@@ -82,7 +202,18 @@ export default function ProfileScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top']}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
         {/* Header with settings */}
         <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
           <Pressable
@@ -98,7 +229,7 @@ export default function ProfileScreen() {
             Profile
           </Text>
           <Pressable
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={handleSettingsPress}
             style={styles.headerButton}
           >
             <Settings size={22} color={colors.text} strokeWidth={1.8} />
@@ -154,7 +285,7 @@ export default function ProfileScreen() {
               <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
               <View style={styles.statItem}>
                 <Text style={[styles.statValue, { color: colors.text }]}>
-                  0
+                  {totalResponses}
                 </Text>
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                   Responses
@@ -165,7 +296,7 @@ export default function ProfileScreen() {
                 <View style={styles.streakRow}>
                   <Flame size={16} color="#F59E0B" strokeWidth={2.5} />
                   <Text style={[styles.statValue, { color: colors.text }]}>
-                    0
+                    {streak}
                   </Text>
                 </View>
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
@@ -211,7 +342,7 @@ export default function ProfileScreen() {
         </GlassCard>
 
         {/* Account Settings Card */}
-        <View style={styles.sectionHeader}>
+        <View ref={settingsRef} style={styles.sectionHeader}>
           <Animated.Text
             entering={FadeInDown.duration(400).delay(160)}
             style={[styles.sectionTitle, { color: colors.textSecondary }]}
@@ -230,7 +361,7 @@ export default function ProfileScreen() {
               <Switch
                 value={darkMode}
                 onValueChange={(v) => {
-                  Haptics.selectionAsync();
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setThemePreference(v ? 'dark' : 'light');
                 }}
                 trackColor={{ false: colors.border, true: colors.primaryLight }}
@@ -246,13 +377,13 @@ export default function ProfileScreen() {
             colors={colors}
             rightElement={
               <Switch
-                value={notifications}
+                value={notificationsEnabled}
                 onValueChange={(v) => {
-                  Haptics.selectionAsync();
-                  setNotifications(v);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setNotificationsEnabled(v);
                 }}
                 trackColor={{ false: colors.border, true: colors.primaryLight }}
-                thumbColor={notifications ? colors.primary : colors.surface}
+                thumbColor={notificationsEnabled ? colors.primary : colors.surface}
               />
             }
           />
@@ -274,7 +405,12 @@ export default function ProfileScreen() {
             label="Help & Support"
             isDark={isDark}
             colors={colors}
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={() =>
+              showInfoAlert(
+                'Help & Support',
+                'Need help with Point!?\n\nEmail us at support@pointapp.io\n\nWe typically respond within 24 hours. You can also check our FAQ section on pointapp.io/help for quick answers to common questions.',
+              )
+            }
           />
           <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
           <SettingItem
@@ -282,7 +418,12 @@ export default function ProfileScreen() {
             label="Terms of Service"
             isDark={isDark}
             colors={colors}
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={() =>
+              showInfoAlert(
+                'Terms of Service',
+                'By using Point!, you agree to our Terms of Service.\n\nKey points:\n- You retain ownership of your survey data\n- We do not sell your personal information\n- You must be 13+ to use this app\n- Misuse of the platform may result in account suspension\n\nFull terms available at pointapp.io/terms',
+              )
+            }
           />
           <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
           <SettingItem
@@ -290,7 +431,12 @@ export default function ProfileScreen() {
             label="Privacy Policy"
             isDark={isDark}
             colors={colors}
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={() =>
+              showInfoAlert(
+                'Privacy Policy',
+                'Your privacy matters to us.\n\nWhat we collect:\n- Account info (email, name)\n- Survey data you create\n- Anonymous usage analytics\n\nWhat we never do:\n- Sell your data to third parties\n- Share respondent data with advertisers\n- Track you across other apps\n\nFull policy at pointapp.io/privacy',
+              )
+            }
           />
         </GlassCard>
 
@@ -313,7 +459,7 @@ export default function ProfileScreen() {
           entering={FadeInDown.duration(400).delay(480)}
           style={[styles.versionText, { color: colors.textTertiary }]}
         >
-          Surve v1.0.0
+          Point! v1.0.0
         </Animated.Text>
       </ScrollView>
     </SafeAreaView>
@@ -336,14 +482,22 @@ function SettingItem({
   isDark: boolean;
   colors: typeof Colors.light | typeof Colors.dark;
 }) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={onPress}
-      disabled={!onPress}
-      style={({ pressed }) => [
-        styles.settingRow,
-        { opacity: pressed && onPress ? 0.7 : 1 },
-      ]}
+      onPressIn={() => {
+        if (onPress) scale.value = withSpring(0.97, Springs.snappy);
+      }}
+      onPressOut={() => {
+        if (onPress) scale.value = withSpring(1, Springs.snappy);
+      }}
+      disabled={!onPress && !rightElement}
+      style={[styles.settingRow, animatedStyle]}
     >
       <View style={styles.settingLeft}>
         <View style={[styles.iconCircle, { backgroundColor: colors.surfaceSecondary }]}>
@@ -362,7 +516,7 @@ function SettingItem({
           />
         )
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -417,12 +571,12 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#475569', // matches Colors.light.primary
+    backgroundColor: '#475569',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    color: '#F1F0EE', // off-white on grey avatar
+    color: '#F1F0EE',
     fontSize: 36,
     fontWeight: '700',
   },

@@ -360,7 +360,7 @@ function ScoringScreen({ sport, onBack }: { sport: Sport; onBack: () => void }) 
 
       {/* Header */}
       <View style={styles.scoringHeader}>
-        <Pressable onPress={handleBack} style={styles.backButton} hitSlop={12}>
+        <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleBack(); }} style={styles.backButton} hitSlop={12}>
           <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
         </Pressable>
         <View style={styles.sportTitleRow}>

@@ -3,11 +3,18 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { createMMKV } from 'react-native-mmkv';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
 import { Colors } from '../constants/theme';
+import { ToastProvider } from '../components/ui/Toast';
+import { Onboarding } from '../components/ui/Onboarding';
 import type { User, Session } from '../types';
 import type { Session as SupabaseSession } from '@supabase/supabase-js';
+
+const storage = createMMKV({ id: 'surve-app' });
+const ONBOARDING_KEY = 'onboarding_complete';
 
 function mapSession(session: SupabaseSession | null): Session | null {
   if (!session) return null;
@@ -34,10 +41,17 @@ function mapUser(supaUser: SupabaseSession['user'] | undefined | null): User | n
 export default function RootLayout() {
   const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
   const colors = Colors[colorScheme];
-  const { setSession, setUser, setAuthLoading } = useStore();
+  const { setSession, setUser, setAuthLoading, session } = useStore();
   const [ready, setReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
+    // Check if onboarding has been completed
+    const onboardingDone = storage.getBoolean(ONBOARDING_KEY) ?? false;
+    if (!onboardingDone) {
+      setShowOnboarding(true);
+    }
+
     // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(mapSession(session));
@@ -59,37 +73,57 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const handleOnboardingComplete = () => {
+    storage.set(ONBOARDING_KEY, true);
+    setShowOnboarding(false);
+  };
+
   if (!ready) return null;
+
+  // Show onboarding after auth is ready but before the app, only if user is logged in
+  // If not logged in, they'll see auth first, then onboarding after login
+  if (showOnboarding && session) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <Onboarding onComplete={handleOnboardingComplete} />
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="auth"
-          options={{ headerShown: false, presentation: 'fullScreenModal' }}
-        />
-        <Stack.Screen
-          name="(survey)"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="friends"
-          options={{ headerShown: false, animation: 'slide_from_right' }}
-        />
-        <Stack.Screen
-          name="history"
-          options={{ headerShown: false, animation: 'slide_from_right' }}
-        />
-      </Stack>
+      <SafeAreaProvider>
+        <ToastProvider>
+          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+              animation: 'slide_from_right',
+            }}
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="auth"
+              options={{ headerShown: false, presentation: 'fullScreenModal' }}
+            />
+            <Stack.Screen
+              name="(survey)"
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="friends"
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+              name="history"
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+          </Stack>
+        </ToastProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

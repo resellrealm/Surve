@@ -11,17 +11,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { ChevronRight, MessagesSquare } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Springs } from '../../constants/theme';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../lib/store';
 import { fetchScores } from '../../lib/sportScores';
 import { SPORTS } from '../../constants/sports';
 import type { SportScore, SportType } from '../../types';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface SurveyWithResponses {
   id: string;
@@ -41,6 +48,84 @@ function getSportAccentColor(sportType: SportType): string {
 
 function getSportIcon(sportType: SportType): LucideIcon | null {
   return SPORTS.find((s) => s.id === sportType)?.icon ?? null;
+}
+
+function SurveyResponseCard({
+  item,
+  date,
+  index,
+  cardBg,
+  borderColor,
+  isDark,
+  colors,
+  accentColor,
+  onPress,
+}: {
+  item: SurveyWithResponses;
+  date: string;
+  index: number;
+  cardBg: string;
+  borderColor: string;
+  isDark: boolean;
+  colors: typeof Colors.light | typeof Colors.dark;
+  accentColor: string;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeInDown.duration(400).delay(index * 80).springify()}>
+      <AnimatedPressable
+        onPressIn={() => { scale.value = withSpring(0.97, Springs.snappy); }}
+        onPressOut={() => { scale.value = withSpring(1, Springs.snappy); }}
+        onPress={onPress}
+        style={[styles.card, { backgroundColor: cardBg, borderColor }, animatedStyle]}
+      >
+        <View style={styles.cardTop}>
+          <View style={styles.cardTitleRow}>
+            <Text style={[styles.cardTitle, { color: isDark ? colors.text : '#111827' }]} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: item.status === 'active' ? colors.successLight : colors.errorLight },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: item.status === 'active' ? colors.success : colors.error },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: item.status === 'active' ? colors.success : colors.error },
+                ]}
+              >
+                {item.status === 'active' ? 'Active' : 'Closed'}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.cardDate, { color: isDark ? colors.textSecondary : '#9CA3AF' }]}>{date}</Text>
+        </View>
+
+        <View style={[styles.cardBottom, { borderTopColor: borderColor }]}>
+          <View style={styles.responseCount}>
+            <MessagesSquare size={18} color={accentColor} strokeWidth={2} />
+            <Text style={[styles.responseCountText, { color: isDark ? colors.text : '#374151' }]}>
+              {item.response_count} {item.response_count === 1 ? 'response' : 'responses'}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={isDark ? colors.textSecondary : '#9CA3AF'} strokeWidth={2} />
+        </View>
+      </AnimatedPressable>
+    </Animated.View>
+  );
 }
 
 export default function ResponsesScreen() {
@@ -130,63 +215,20 @@ export default function ResponsesScreen() {
     });
 
     return (
-      <Animated.View entering={FadeInDown.duration(400).delay(index * 80).springify()}>
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push(`/(survey)/${item.id}`);
-          }}
-          style={({ pressed }) => [
-            styles.card,
-            {
-              backgroundColor: cardBg,
-              borderColor,
-              opacity: pressed ? 0.95 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
-            },
-          ]}
-        >
-          <View style={styles.cardTop}>
-            <View style={styles.cardTitleRow}>
-              <Text style={[styles.cardTitle, { color: isDark ? colors.text : '#111827' }]} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: item.status === 'active' ? colors.successLight : colors.errorLight },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: item.status === 'active' ? colors.success : colors.error },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusText,
-                    { color: item.status === 'active' ? colors.success : colors.error },
-                  ]}
-                >
-                  {item.status === 'active' ? 'Active' : 'Closed'}
-                </Text>
-              </View>
-            </View>
-            <Text style={[styles.cardDate, { color: isDark ? colors.textSecondary : '#9CA3AF' }]}>{date}</Text>
-          </View>
-
-          <View style={[styles.cardBottom, { borderTopColor: borderColor }]}>
-            <View style={styles.responseCount}>
-              <MessagesSquare size={18} color={accentColor} strokeWidth={2} />
-              <Text style={[styles.responseCountText, { color: isDark ? colors.text : '#374151' }]}>
-                {item.response_count} {item.response_count === 1 ? 'response' : 'responses'}
-              </Text>
-            </View>
-            <ChevronRight size={18} color={isDark ? colors.textSecondary : '#9CA3AF'} strokeWidth={2} />
-          </View>
-        </Pressable>
-      </Animated.View>
+      <SurveyResponseCard
+        item={item}
+        date={date}
+        index={index}
+        cardBg={cardBg}
+        borderColor={borderColor}
+        isDark={isDark}
+        colors={colors}
+        accentColor={accentColor}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.push(`/(survey)/${item.id}`);
+        }}
+      />
     );
   };
 
@@ -271,6 +313,15 @@ export default function ResponsesScreen() {
         <Text style={[styles.emptySubtitle, { color: isDark ? colors.textSecondary : '#6B7280' }]}>
           Create and share a survey to start{'\n'}collecting responses
         </Text>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push('/(tabs)/create');
+          }}
+          style={[styles.emptyCta, { backgroundColor: accentColor }]}
+        >
+          <Text style={[styles.emptyCtaText]}>Create Survey</Text>
+        </Pressable>
       </Animated.View>
     </View>
   );
@@ -474,5 +525,16 @@ const styles = StyleSheet.create({
     fontSize: Typography.footnote.fontSize,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  emptyCta: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  emptyCtaText: {
+    color: '#FFFFFF',
+    fontSize: Typography.footnote.fontSize,
+    fontWeight: '700',
   },
 });

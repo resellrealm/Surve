@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { User, Session, Survey, SportScore } from '../types';
 import type { ColorScheme } from '../hooks/useTheme';
+import { getStoredTheme, setStoredTheme, getStoredNotifications, setStoredNotifications } from './storage';
 
 // ─── Auth Slice ──────────────────────────────────────────────────────────────
 
@@ -58,10 +59,12 @@ interface SportScoreActions {
 
 interface UIState {
   themePreference: ColorScheme | 'system';
+  notificationsEnabled: boolean;
 }
 
 interface UIActions {
   setThemePreference: (preference: ColorScheme | 'system') => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
 }
 
 // ─── Combined Store ──────────────────────────────────────────────────────────
@@ -152,9 +155,17 @@ export const useStore = create<AppStore>((set) => ({
   setActiveScore: (score) => set({ activeScore: score }),
   setSportScoresLoading: (loading) => set({ sportScoresLoading: loading }),
 
-  // UI state
-  themePreference: 'system',
+  // UI state — hydrate from MMKV
+  themePreference: getStoredTheme(),
+  notificationsEnabled: getStoredNotifications(),
 
-  // UI actions
-  setThemePreference: (preference) => set({ themePreference: preference }),
+  // UI actions — persist to MMKV
+  setThemePreference: (preference) => {
+    setStoredTheme(preference);
+    set({ themePreference: preference });
+  },
+  setNotificationsEnabled: (enabled) => {
+    setStoredNotifications(enabled);
+    set({ notificationsEnabled: enabled });
+  },
 }));

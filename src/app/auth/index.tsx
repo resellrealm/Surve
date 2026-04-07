@@ -38,9 +38,9 @@ export default function WelcomeScreen() {
         {/* Logo Area */}
         <Animated.View entering={FadeInUp.duration(800).springify()} style={styles.logoContainer}>
           <View style={styles.logoCircle}>
-            <Text style={styles.logoIcon}>S</Text>
+            <Text style={styles.logoIcon}>P</Text>
           </View>
-          <Text style={[styles.logoText, { color: colors.primary }]}>Surve</Text>
+          <Text style={[styles.logoText, { color: colors.primary }]}>Point!</Text>
         </Animated.View>
 
         {/* Tagline */}

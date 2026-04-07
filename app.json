@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Surve",
-    "slug": "surve",
+    "name": "Point!",
+    "slug": "point",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "surve",
+    "scheme": "point",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.surve.app",
+      "bundleIdentifier": "com.point.app",
       "usesAppleSignIn": true
     },
     "android": {
@@ -24,7 +24,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.surve.app"
+      "package": "com.point.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

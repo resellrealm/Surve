@@ -21,6 +21,9 @@ import Animated, {
   FadeOutLeft,
   SlideInRight,
   SlideOutLeft,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
@@ -36,9 +39,11 @@ import {
   UserCircle,
   Users,
 } from 'lucide-react-native';
-import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Springs } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../lib/store';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type QuestionType = 'multiple_choice' | 'rating' | 'text' | 'nps' | 'yes_no';
 
@@ -103,7 +108,7 @@ export default function CreateSurveyScreen() {
   };
 
   const removeQuestion = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     setQuestions(questions.filter((q) => q.id !== id));
   };
 

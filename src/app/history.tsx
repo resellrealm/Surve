@@ -6,6 +6,7 @@ import {
   Pressable,
   useColorScheme,
   FlatList,
+  RefreshControl,
   ActivityIndicator,
   Share,
 } from 'react-native';
@@ -17,10 +18,8 @@ import {
   ArrowLeft,
   Trophy,
   Clock,
-  BarChart3,
   Repeat,
   Share2,
-  Flame,
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { getSportById } from '../constants/sports';
@@ -38,6 +37,7 @@ export default function HistoryScreen() {
   const userId = session?.user?.id;
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [completedScores, setCompletedScores] = useState<SportScore[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [h2h, setH2h] = useState<{ wins: number; losses: number; draws: number } | null>(null);
@@ -49,7 +49,7 @@ export default function HistoryScreen() {
 
   const loadHistory = useCallback(async () => {
     if (!userId) return;
-    setLoading(true);
+    if (!refreshing) setLoading(true);
     try {
       if (friendId) {
         const result = await getHeadToHead(userId, friendId);
@@ -67,11 +67,20 @@ export default function HistoryScreen() {
       console.error('Failed to load history:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [userId, friendId]);
+  }, [userId, friendId, refreshing]);
+
+  const onRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefreshing(true);
+    loadHistory();
+  }, [loadHistory]);
 
   const handleShare = useCallback(async (item: SportScore | Game) => {
-    const sport = getSportById('sport' in item ? item.sport : item.sport_type);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const sportId = 'sport_type' in item ? item.sport_type : item.sport;
+    const sport = getSportById(sportId);
     const name = sport?.name ?? 'Game';
     let scoreText: string;
     if ('home_score' in item) {
@@ -80,8 +89,10 @@ export default function HistoryScreen() {
       scoreText = `${item.team_a_name} ${item.team_a_score} - ${item.team_b_score} ${item.team_b_name}`;
     }
     try {
-      await Share.share({ message: `${name}: ${scoreText} — tracked with Surve` });
-    } catch {}
+      await Share.share({ message: `${name}: ${scoreText} -- tracked with Point!` });
+    } catch {
+      // User cancelled
+    }
   }, []);
 
   const formatDate = (dateStr: string) => {
@@ -100,9 +111,8 @@ export default function HistoryScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+        <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backBtn} hitSlop={12}>
           <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
         </Pressable>
         <Text style={[Typography.title3, { color: colors.text }]}>
@@ -111,7 +121,6 @@ export default function HistoryScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* H2H Stats */}
       {h2h && (
         <Animated.View entering={FadeInDown.duration(300)} style={[styles.h2hCard, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
           <View style={styles.h2hRow}>
@@ -131,13 +140,16 @@ export default function HistoryScreen() {
         </Animated.View>
       )}
 
-      {loading ? (
+      {loading && !refreshing ? (
         <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: Spacing.xxxl }} />
       ) : (
         <FlatList
           data={allItems}
-          keyExtractor={(item) => item.type === 'score' ? item.data.id : item.data.id}
-          contentContainerStyle={styles.listContent}
+          keyExtractor={(item) => `${item.type}-${item.data.id}`}
+          contentContainerStyle={[styles.listContent, allItems.length === 0 && { flex: 1 }]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+          }
           renderItem={({ item, index }) => {
             const isScore = item.type === 'score';
             const sportId = isScore ? item.data.sport_type : item.data.sport;
@@ -174,21 +186,13 @@ export default function HistoryScreen() {
 
                   <View style={styles.scoreRow}>
                     <View style={styles.teamSide}>
-                      <Text style={[Typography.footnote, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {homeTeam}
-                      </Text>
-                      <Text style={[styles.gameScore, { color: winner === 'team_a' ? '#059669' : colors.text }]}>
-                        {homeScore}
-                      </Text>
+                      <Text style={[Typography.footnote, { color: colors.textSecondary }]} numberOfLines={1}>{homeTeam}</Text>
+                      <Text style={[styles.gameScore, { color: winner === 'team_a' ? '#059669' : colors.text }]}>{homeScore}</Text>
                     </View>
                     <Text style={[Typography.caption1, { color: colors.textTertiary }]}>vs</Text>
                     <View style={styles.teamSide}>
-                      <Text style={[Typography.footnote, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {awayTeam}
-                      </Text>
-                      <Text style={[styles.gameScore, { color: winner === 'team_b' ? '#059669' : colors.text }]}>
-                        {awayScore}
-                      </Text>
+                      <Text style={[Typography.footnote, { color: colors.textSecondary }]} numberOfLines={1}>{awayTeam}</Text>
+                      <Text style={[styles.gameScore, { color: winner === 'team_b' ? '#059669' : colors.text }]}>{awayScore}</Text>
                     </View>
                   </View>
 
@@ -222,7 +226,7 @@ export default function HistoryScreen() {
                 No completed games yet
               </Text>
               <Text style={[Typography.footnote, { color: colors.textTertiary, textAlign: 'center', marginTop: Spacing.xs }]}>
-                Play some games and they'll show up here
+                Play some games and they will show up here
               </Text>
             </View>
           }
@@ -234,64 +238,21 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  h2hCard: {
-    marginHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-  },
+  h2hCard: { marginHorizontal: Spacing.lg, borderRadius: BorderRadius.md, borderWidth: 1, padding: Spacing.lg, marginBottom: Spacing.md },
   h2hRow: { flexDirection: 'row', justifyContent: 'space-around' },
   h2hStat: { alignItems: 'center' },
   h2hValue: { fontSize: 28, fontWeight: '700' },
   listContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.massive },
-  gameCard: {
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    ...Shadows.sm,
-  },
-  gameHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
+  gameCard: { borderRadius: BorderRadius.md, borderWidth: 1, padding: Spacing.md, marginBottom: Spacing.md, ...Shadows.sm },
+  gameHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   sportBadge: { flexDirection: 'row', alignItems: 'center' },
   dateRow: { flexDirection: 'row', alignItems: 'center' },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xl, marginBottom: Spacing.md },
   teamSide: { alignItems: 'center', flex: 1 },
   gameScore: { fontSize: 36, fontWeight: '200', marginTop: Spacing.xs },
-  gameActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  gameActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: Spacing.massive,
-  },
+  gameActions: { flexDirection: 'row', justifyContent: 'center', gap: Spacing.sm },
+  gameActionBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.full },
+  emptyState: { alignItems: 'center', justifyContent: 'center', flex: 1 },
 });

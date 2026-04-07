@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import {
   ChevronLeft,
   Share2,
@@ -30,10 +31,12 @@ import {
   CheckCircle2,
   Pencil,
   XCircle,
+  Eye,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { useToast } from '../../components/ui/Toast';
 
 interface Survey {
   id: string;
@@ -51,6 +54,14 @@ interface Question {
   sort_order: number;
 }
 
+interface ResponseRow {
+  id: string;
+  respondent_id: string | null;
+  answers: Record<string, unknown>[] | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 const QUESTION_TYPE_LABELS: Record<string, { label: string; icon: LucideIcon }> = {
   multiple_choice: { label: 'Multiple Choice', icon: List },
   rating: { label: 'Rating', icon: Star },
@@ -65,11 +76,16 @@ export default function SurveyDetailScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const colors = isDark ? Colors.dark : Colors.light;
+  const toast = useToast();
 
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [responseCount, setResponseCount] = useState(0);
+  const [responses, setResponses] = useState<ResponseRow[]>([]);
+  const [showResponses, setShowResponses] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
 
   const cardBg = isDark ? '#1F2937' : '#FFFFFF';
   const borderColor = isDark ? '#374151' : '#E5E7EB';
@@ -77,23 +93,24 @@ export default function SurveyDetailScreen() {
   const shareLink = `https://surve.app/s/${id}`;
 
   const fetchSurveyData = useCallback(async () => {
+    setError(null);
     try {
       const [surveyRes, questionsRes, responsesRes] = await Promise.all([
         supabase.from('surveys').select('*').eq('id', id).single(),
         supabase.from('questions').select('*').eq('survey_id', id).order('sort_order'),
-        supabase.from('responses').select('count').eq('survey_id', id),
+        supabase.from('responses').select('id, respondent_id, answers, completed_at, created_at').eq('survey_id', id).order('created_at', { ascending: false }).limit(50),
       ]);
 
       if (surveyRes.error) throw surveyRes.error;
       if (questionsRes.error) throw questionsRes.error;
-      if (responsesRes.error) throw responsesRes.error;
 
       setSurvey(surveyRes.data);
       setQuestions(questionsRes.data || []);
-      setResponseCount(responsesRes.data?.[0]?.count || 0);
-    } catch (err) {
+      setResponses((responsesRes.data as ResponseRow[] | null) ?? []);
+      setResponseCount((responsesRes.data ?? []).length);
+    } catch (err: any) {
       console.error('Error fetching survey:', err);
-      Alert.alert('Error', 'Failed to load survey details.');
+      setError(err?.message || 'Failed to load survey details.');
     } finally {
       setLoading(false);
     }
@@ -110,7 +127,7 @@ export default function SurveyDetailScreen() {
         message: `Check out my survey: ${survey?.title}\n${shareLink}`,
         url: shareLink,
       });
-    } catch (err) {
+    } catch {
       // User cancelled
     }
   };
@@ -118,13 +135,20 @@ export default function SurveyDetailScreen() {
   const handleCopyLink = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
-      await Share.share({ message: shareLink, url: shareLink });
+      await Clipboard.setStringAsync(shareLink);
+      toast.success('Copied!', 'Survey link copied to clipboard.');
     } catch {
-      // User cancelled
+      // Fallback to Share
+      try {
+        await Share.share({ message: shareLink, url: shareLink });
+      } catch {
+        // User cancelled
+      }
     }
   };
 
   const handleCloseSurvey = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
       'Close Survey',
       'This will stop accepting new responses. Are you sure?',
@@ -135,6 +159,7 @@ export default function SurveyDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            setClosing(true);
             try {
               const { error } = await supabase
                 .from('surveys')
@@ -142,8 +167,11 @@ export default function SurveyDetailScreen() {
                 .eq('id', id);
               if (error) throw error;
               setSurvey((prev) => (prev ? { ...prev, status: 'closed' } : prev));
+              toast.success('Survey Closed', 'No more responses will be accepted.');
             } catch (err: any) {
               Alert.alert('Error', err.message || 'Failed to close survey.');
+            } finally {
+              setClosing(false);
             }
           },
         },
@@ -151,21 +179,44 @@ export default function SurveyDetailScreen() {
     );
   };
 
+  const handleToggleResponses = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowResponses(!showResponses);
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9FAFB' }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#475569" />
+          <Text style={[Typography.footnote, { color: colors.textSecondary, marginTop: Spacing.md }]}>Loading survey...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!survey) {
+  if (error || !survey) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9FAFB' }]}>
+        <View style={styles.topBar}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
+            style={styles.backButton}
+          >
+            <ChevronLeft size={24} color={isDark ? colors.text : '#374151'} strokeWidth={2} />
+          </Pressable>
+          <View style={styles.topBarActions} />
+        </View>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.errorText, { color: isDark ? colors.text : '#111827' }]}>Survey not found</Text>
+          <Text style={[styles.errorText, { color: isDark ? colors.text : '#111827' }]}>
+            {error || 'Survey not found'}
+          </Text>
+          <Pressable
+            onPress={() => { setLoading(true); fetchSurveyData(); }}
+            style={[styles.retryBtn, { backgroundColor: colors.primary + '15' }]}
+          >
+            <Text style={[Typography.footnote, { color: colors.primary, fontWeight: '600' }]}>Retry</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -183,15 +234,11 @@ export default function SurveyDetailScreen() {
       {/* Top bar */}
       <Animated.View entering={FadeInUp.duration(400)} style={styles.topBar}>
         <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
-          }}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
           style={styles.backButton}
         >
           <ChevronLeft size={24} color={isDark ? colors.text : '#374151'} strokeWidth={2} />
         </Pressable>
-
         <View style={styles.topBarActions}>
           <Pressable
             onPress={handleShare}
@@ -208,14 +255,9 @@ export default function SurveyDetailScreen() {
           <Text style={[styles.title, { color: isDark ? colors.text : '#111827' }]}>{survey.title}</Text>
           <View style={styles.metaRow}>
             <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: isActive ? colors.successLight : colors.errorLight },
-              ]}
+              style={[styles.statusBadge, { backgroundColor: isActive ? colors.successLight : colors.errorLight }]}
             >
-              <View
-                style={[styles.statusDot, { backgroundColor: isActive ? colors.success : colors.error }]}
-              />
+              <View style={[styles.statusDot, { backgroundColor: isActive ? colors.success : colors.error }]} />
               <Text style={[styles.statusText, { color: isActive ? colors.success : colors.error }]}>
                 {isActive ? 'Active' : 'Closed'}
               </Text>
@@ -318,11 +360,68 @@ export default function SurveyDetailScreen() {
           );
         })}
 
+        {/* Responses Section */}
+        {responseCount > 0 && (
+          <Animated.View entering={FadeInDown.duration(500).delay(450).springify()}>
+            <Pressable
+              onPress={handleToggleResponses}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { borderWidth: 1.5, borderColor, opacity: pressed ? 0.8 : 1, marginTop: Spacing.xl },
+              ]}
+            >
+              <Eye size={20} color="#475569" strokeWidth={2} />
+              <Text style={styles.editButtonText}>
+                {showResponses ? 'Hide Responses' : `View ${responseCount} Responses`}
+              </Text>
+            </Pressable>
+
+            {showResponses && responses.map((resp, idx) => (
+              <Animated.View
+                key={resp.id}
+                entering={FadeInDown.duration(300).delay(idx * 40)}
+                style={[styles.responseCard, { backgroundColor: cardBg, borderColor }]}
+              >
+                <View style={styles.responseHeader}>
+                  <Text style={[Typography.caption1, { color: isDark ? colors.textSecondary : '#6B7280', fontWeight: '600' }]}>
+                    Response #{idx + 1}
+                  </Text>
+                  <Text style={[Typography.caption2, { color: isDark ? colors.textTertiary : '#9CA3AF' }]}>
+                    {resp.completed_at
+                      ? new Date(resp.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'In progress'}
+                  </Text>
+                </View>
+                {Array.isArray(resp.answers) && resp.answers.length > 0 ? (
+                  resp.answers.map((answer: any, aIdx: number) => {
+                    const q = questions.find(qq => qq.id === answer?.question_id);
+                    return (
+                      <View key={aIdx} style={styles.answerRow}>
+                        <Text style={[Typography.caption1, { color: isDark ? colors.textSecondary : '#6B7280' }]} numberOfLines={1}>
+                          {q?.text ?? `Q${aIdx + 1}`}
+                        </Text>
+                        <Text style={[Typography.footnote, { color: isDark ? colors.text : '#111827', fontWeight: '500' }]}>
+                          {typeof answer?.value === 'object' ? JSON.stringify(answer.value) : String(answer?.value ?? '--')}
+                        </Text>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <Text style={[Typography.caption1, { color: isDark ? colors.textTertiary : '#9CA3AF', marginTop: Spacing.xs }]}>
+                    No answers recorded
+                  </Text>
+                )}
+              </Animated.View>
+            ))}
+          </Animated.View>
+        )}
+
         {/* Action buttons */}
         <Animated.View entering={FadeInDown.duration(500).delay(500).springify()} style={styles.actionsSection}>
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              toast.info('Coming Soon', 'Survey editing is not yet available.');
             }}
             style={({ pressed }) => [
               styles.actionButton,
@@ -337,14 +436,19 @@ export default function SurveyDetailScreen() {
           {isActive && (
             <Pressable
               onPress={handleCloseSurvey}
+              disabled={closing}
               style={({ pressed }) => [
                 styles.actionButton,
                 styles.closeButton,
-                { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+                { opacity: pressed || closing ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
               ]}
             >
-              <XCircle size={20} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.closeButtonText}>Close Survey</Text>
+              {closing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <XCircle size={20} color="#FFFFFF" strokeWidth={2} />
+              )}
+              <Text style={styles.closeButtonText}>{closing ? 'Closing...' : 'Close Survey'}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -354,212 +458,47 @@ export default function SurveyDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorText: {
-    fontSize: Typography.body.fontSize,
-    fontWeight: '600',
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  topBarActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  topBarBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxl,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginTop: Spacing.sm,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  dateText: {
-    fontSize: Typography.caption1.fontSize,
-  },
-  description: {
-    fontSize: Typography.footnote.fontSize,
-    lineHeight: 22,
-    marginTop: Spacing.md,
-  },
-  shareLinkCard: {
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    padding: Spacing.md,
-    marginTop: Spacing.xl,
-    gap: Spacing.sm,
-  },
-  shareLinkHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  shareLinkLabel: {
-    fontSize: Typography.footnote.fontSize,
-    fontWeight: '700',
-  },
-  shareLinkUrl: {
-    fontSize: Typography.footnote.fontSize,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  copyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#475569',
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
-    gap: 6,
-  },
-  copyButtonText: {
-    color: '#FFFFFF',
-    fontSize: Typography.footnote.fontSize,
-    fontWeight: '600',
-  },
-  analyticsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-  },
-  analyticsCard: {
-    flex: 1,
-    alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    gap: 4,
-  },
-  analyticsNumber: {
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  analyticsLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  sectionTitle: {
-    fontSize: Typography.title3.fontSize,
-    fontWeight: '700',
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.md,
-  },
-  questionCard: {
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  questionTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  questionNumberBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#475569',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  questionNumberText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  questionTypeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  questionTypeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  questionText: {
-    fontSize: Typography.body.fontSize,
-    fontWeight: '500',
-    lineHeight: 22,
-  },
-  actionsSection: {
-    marginTop: Spacing.xl,
-    gap: Spacing.md,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: BorderRadius.lg,
-    gap: Spacing.sm,
-  },
-  editButton: {
-    borderWidth: 1.5,
-    borderColor: '#475569',
-  },
-  editButtonText: {
-    color: '#475569',
-    fontSize: Typography.body.fontSize,
-    fontWeight: '700',
-  },
-  closeButton: {
-    backgroundColor: '#EF4444',
-    ...Shadows.sm,
-  },
-  closeButtonText: {
-    color: '#FFFFFF',
-    fontSize: Typography.body.fontSize,
-    fontWeight: '700',
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorText: { fontSize: Typography.body.fontSize, fontWeight: '600' },
+  retryBtn: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm, borderRadius: BorderRadius.full, marginTop: Spacing.lg },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  topBarActions: { flexDirection: 'row', gap: Spacing.sm },
+  topBarBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xxl },
+  title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.sm },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, gap: 4 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  dateText: { fontSize: Typography.caption1.fontSize },
+  description: { fontSize: Typography.footnote.fontSize, lineHeight: 22, marginTop: Spacing.md },
+  shareLinkCard: { borderRadius: BorderRadius.lg, borderWidth: 1, padding: Spacing.md, marginTop: Spacing.xl, gap: Spacing.sm },
+  shareLinkHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  shareLinkLabel: { fontSize: Typography.footnote.fontSize, fontWeight: '700' },
+  shareLinkUrl: { fontSize: Typography.footnote.fontSize, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  copyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#475569', paddingVertical: 10, borderRadius: BorderRadius.md, gap: 6 },
+  copyButtonText: { color: '#FFFFFF', fontSize: Typography.footnote.fontSize, fontWeight: '600' },
+  analyticsRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
+  analyticsCard: { flex: 1, alignItems: 'center', padding: Spacing.md, borderRadius: BorderRadius.lg, borderWidth: 1, gap: 4 },
+  analyticsNumber: { fontSize: 22, fontWeight: '800' },
+  analyticsLabel: { fontSize: 11, fontWeight: '600' },
+  sectionTitle: { fontSize: Typography.title3.fontSize, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.md },
+  questionCard: { borderRadius: BorderRadius.lg, borderWidth: 1, padding: Spacing.md, marginBottom: Spacing.sm },
+  questionTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  questionNumberBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#475569', justifyContent: 'center', alignItems: 'center' },
+  questionNumberText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  questionTypeBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, gap: 4 },
+  questionTypeText: { fontSize: 12, fontWeight: '600' },
+  questionText: { fontSize: Typography.body.fontSize, fontWeight: '500', lineHeight: 22 },
+  responseCard: { borderRadius: BorderRadius.lg, borderWidth: 1, padding: Spacing.md, marginTop: Spacing.sm },
+  responseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
+  answerRow: { paddingVertical: Spacing.xs, gap: 2 },
+  actionsSection: { marginTop: Spacing.xl, gap: Spacing.md },
+  actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: BorderRadius.lg, gap: Spacing.sm },
+  editButton: { borderWidth: 1.5, borderColor: '#475569' },
+  editButtonText: { color: '#475569', fontSize: Typography.body.fontSize, fontWeight: '700' },
+  closeButton: { backgroundColor: '#EF4444', ...Shadows.sm },
+  closeButtonText: { color: '#FFFFFF', fontSize: Typography.body.fontSize, fontWeight: '700' },
 });
