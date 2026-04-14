@@ -106,14 +106,16 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-          <View
-            style={[
-              styles.notifButton,
-              { backgroundColor: colors.surface },
-            ]}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(profile)/notifications');
+            }}
+            style={[styles.notifButton, { backgroundColor: colors.surface }]}
           >
             <Bell size={22} color={colors.text} strokeWidth={2} />
-          </View>
+            <View style={[styles.notifDot, { backgroundColor: colors.primary, borderColor: colors.surface }]} />
+          </Pressable>
         </View>
 
         <Animated.View
@@ -259,6 +261,15 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notifDot: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
   },
   titleSection: {
     paddingHorizontal: Spacing.lg,

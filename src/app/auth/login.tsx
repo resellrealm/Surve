@@ -6,7 +6,7 @@ import Animated, {
   FadeInDown,
   FadeInUp,
 } from 'react-native-reanimated';
-import { Mail, Lock, ArrowRight } from 'lucide-react-native';
+import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
@@ -19,7 +19,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
-  const { signIn } = useStore();
+  const { signIn, loginAsDemo } = useStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -89,6 +89,20 @@ export default function LoginScreen() {
             fullWidth
             icon={<ArrowRight size={20} color={colors.onPrimary} strokeWidth={2} />}
           />
+
+          <Pressable
+            onPress={() => {
+              haptics.medium();
+              loginAsDemo('creator');
+              router.replace('/(tabs)');
+            }}
+            style={[styles.demoBtn, { borderColor: colors.border }]}
+          >
+            <Sparkles size={16} color={colors.primary} strokeWidth={2} />
+            <Text style={[styles.demoText, { color: colors.primary }]}>
+              Explore as demo creator
+            </Text>
+          </Pressable>
         </Animated.View>
 
         <Animated.View
@@ -144,6 +158,20 @@ const styles = StyleSheet.create({
     ...Typography.subheadline,
   },
   linkText: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+  },
+  demoBtn: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  demoText: {
     ...Typography.subheadline,
     fontWeight: '600',
   },

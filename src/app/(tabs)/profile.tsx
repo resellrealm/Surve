@@ -27,6 +27,8 @@ import {
   LinkIcon,
   Shield,
   Instagram,
+  Wallet,
+  CreditCard,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
@@ -349,69 +351,58 @@ export default function ProfileScreen() {
         </Animated.View>
       )}
 
-      {/* Settings */}
-      <Animated.View entering={FadeInDown.duration(500).delay(400)}>
+      {/* Money */}
+      <Animated.View entering={FadeInDown.duration(500).delay(380)}>
         <Card style={styles.settingsCard} padding={0}>
           <SettingsRow
-            icon={
-              <Bell size={20} color={colors.primary} strokeWidth={2} />
-            }
-            title="Notifications"
-            subtitle="Manage push notifications"
-            onPress={() => Alert.alert('Notifications', 'Push notification settings coming soon.')}
+            icon={<Wallet size={20} color={colors.primary} strokeWidth={2} />}
+            title={isCreator ? 'Earnings' : 'Spending'}
+            subtitle="Payouts, transactions, history"
+            onPress={() => router.push('/(profile)/earnings')}
           />
-          <View
-            style={[
-              styles.settingsSeparator,
-              { backgroundColor: colors.borderLight },
-            ]}
-          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
-            icon={
-              <Shield size={20} color={colors.primary} strokeWidth={2} />
-            }
+            icon={<CreditCard size={20} color={colors.primary} strokeWidth={2} />}
+            title="Payment methods"
+            subtitle="Cards, Apple Pay, bank"
+            onPress={() => router.push('/(payment)/methods')}
+          />
+        </Card>
+      </Animated.View>
+
+      {/* Settings */}
+      <Animated.View entering={FadeInDown.duration(500).delay(420)}>
+        <Card style={styles.settingsCard} padding={0}>
+          <SettingsRow
+            icon={<Bell size={20} color={colors.primary} strokeWidth={2} />}
+            title="Notifications"
+            subtitle="Activity, alerts, payouts"
+            onPress={() => router.push('/(profile)/notifications')}
+          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
+          <SettingsRow
+            icon={<Shield size={20} color={colors.primary} strokeWidth={2} />}
             title="Account & Privacy"
             subtitle="Password, email, data"
-            onPress={() => Alert.alert('Account & Privacy', 'Account settings coming soon.')}
+            onPress={() => router.push('/(profile)/account')}
           />
-          <View
-            style={[
-              styles.settingsSeparator,
-              { backgroundColor: colors.borderLight },
-            ]}
-          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
-            icon={
-              <Settings size={20} color={colors.primary} strokeWidth={2} />
-            }
+            icon={<Settings size={20} color={colors.primary} strokeWidth={2} />}
             title="Preferences"
-            subtitle="Theme, language"
-            onPress={() => Alert.alert('Preferences', 'Theme and language preferences coming soon.')}
+            subtitle="Theme, notifications"
+            onPress={() => router.push('/(profile)/preferences')}
           />
-          <View
-            style={[
-              styles.settingsSeparator,
-              { backgroundColor: colors.borderLight },
-            ]}
-          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
-            icon={
-              <HelpCircle size={20} color={colors.primary} strokeWidth={2} />
-            }
+            icon={<HelpCircle size={20} color={colors.primary} strokeWidth={2} />}
             title="Help & Support"
             subtitle="FAQ, contact us"
             onPress={() => Alert.alert('Help & Support', 'Contact us at support@surve.app')}
           />
-          <View
-            style={[
-              styles.settingsSeparator,
-              { backgroundColor: colors.borderLight },
-            ]}
-          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
-            icon={
-              <LogOut size={20} color={colors.error} strokeWidth={2} />
-            }
+            icon={<LogOut size={20} color={colors.error} strokeWidth={2} />}
             title="Log Out"
             onPress={handleLogout}
             destructive

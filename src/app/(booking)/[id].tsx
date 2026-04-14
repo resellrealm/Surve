@@ -18,6 +18,7 @@ import {
   MessageCircle,
   FileText,
   Clock,
+  Lock,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
@@ -123,6 +124,20 @@ export default function BookingDetailScreen() {
   const canCancel =
     booking.status === 'pending' || booking.status === 'accepted';
   const canComplete = booking.status === 'active';
+  // Business pays on pending/accepted before work begins; creator never pays.
+  const canPay = !isCreator && (booking.status === 'pending' || booking.status === 'accepted');
+
+  const handlePay = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({
+      pathname: '/(payment)/checkout',
+      params: {
+        bookingId: booking.id,
+        listingId: booking.listing_id,
+        amount: String(booking.pay_agreed),
+      },
+    });
+  }, [booking, router]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -311,7 +326,16 @@ export default function BookingDetailScreen() {
           style={styles.ctaButtonHalf}
           icon={<MessageCircle size={18} color={colors.primary} strokeWidth={2} />}
         />
-        {canComplete && (
+        {canPay && (
+          <Button
+            title={`Pay $${booking.pay_agreed.toLocaleString()}`}
+            onPress={handlePay}
+            size="lg"
+            style={styles.ctaButtonHalf}
+            icon={<Lock size={16} color={colors.onPrimary} strokeWidth={2.2} />}
+          />
+        )}
+        {!canPay && canComplete && (
           <Button
             title="Mark Complete"
             onPress={handleComplete}
@@ -319,7 +343,7 @@ export default function BookingDetailScreen() {
             style={styles.ctaButtonHalf}
           />
         )}
-        {canCancel && (
+        {!canPay && !canComplete && canCancel && (
           <Button
             title="Cancel"
             onPress={handleCancel}
@@ -328,7 +352,7 @@ export default function BookingDetailScreen() {
             style={styles.ctaButtonHalf}
           />
         )}
-        {!canComplete && !canCancel && (
+        {!canPay && !canComplete && !canCancel && (
           <Button
             title="View Listing"
             onPress={handleViewListing}

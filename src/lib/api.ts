@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import * as mock from './mockData';
 import type {
   User,
   Session,
@@ -15,6 +16,12 @@ import type {
   ListingStatus,
   BookingStatus,
 } from '../types';
+
+// Show curated demo content when the DB has no matching rows yet.
+// Real rows always win; mocks only surface on an empty result.
+const USE_MOCK_FALLBACK = true;
+const preferMock = <T,>(real: T[], fallback: T[]): T[] =>
+  USE_MOCK_FALLBACK && real.length === 0 ? fallback : real;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -298,17 +305,18 @@ export async function getListings(): Promise<Listing[]> {
 
   if (error) {
     console.error('getListings error:', error.message);
-    return [];
+    return USE_MOCK_FALLBACK ? mock.mockListings : [];
   }
 
-  return (data ?? []).map((row: any) => {
-    // Flatten business user
+  const real = (data ?? []).map((row: any) => {
     if (row.businesses) {
       row.businesses.user = row.businesses.users;
     }
     row.business_profiles = row.businesses;
     return mapListing(row);
   });
+
+  return preferMock(real, mock.mockListings);
 }
 
 export async function getListing(id: string): Promise<Listing | null> {
@@ -318,7 +326,12 @@ export async function getListing(id: string): Promise<Listing | null> {
     .eq('id', id)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    if (USE_MOCK_FALLBACK) {
+      return mock.mockListings.find((l) => l.id === id) ?? mock.mockListings[0] ?? null;
+    }
+    return null;
+  }
 
   if ((data as any).businesses) {
     (data as any).businesses.user = (data as any).businesses.users;
@@ -408,13 +421,15 @@ export async function getCreators(): Promise<Creator[]> {
 
   if (error) {
     console.error('getCreators error:', error.message);
-    return [];
+    return USE_MOCK_FALLBACK ? mock.mockCreators : [];
   }
 
-  return (data ?? []).map((row: any) => {
+  const real = (data ?? []).map((row: any) => {
     row.user = row.users;
     return mapCreator(row);
   });
+
+  return preferMock(real, mock.mockCreators);
 }
 
 export async function getCreatorProfile(
@@ -426,7 +441,16 @@ export async function getCreatorProfile(
     .eq('user_id', userId)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    if (USE_MOCK_FALLBACK) {
+      return (
+        mock.mockCreators.find((c) => c.id === userId || c.user_id === userId) ??
+        mock.mockCreators[0] ??
+        null
+      );
+    }
+    return null;
+  }
 
   (data as any).user = (data as any).users;
   return mapCreator(data);
@@ -548,10 +572,10 @@ export async function getBookings(userId: string): Promise<Booking[]> {
 
   if (error) {
     console.error('getBookings error:', error.message);
-    return [];
+    return USE_MOCK_FALLBACK ? mock.mockBookings : [];
   }
 
-  return (data ?? []).map((row: any) => {
+  const real = (data ?? []).map((row: any) => {
     // Flatten nested users
     if (row.listings?.businesses) {
       row.listings.businesses.user = row.listings.businesses.users;
@@ -567,6 +591,8 @@ export async function getBookings(userId: string): Promise<Booking[]> {
     }
     return mapBooking(row);
   });
+
+  return preferMock(real, mock.mockBookings);
 }
 
 export async function createBooking(booking: {
@@ -622,7 +648,11 @@ export async function getConversations(
 
   if (error) {
     console.error('getConversations error:', error.message);
-    return [];
+    return USE_MOCK_FALLBACK ? mock.mockConversations : [];
+  }
+
+  if (USE_MOCK_FALLBACK && (!data || data.length === 0)) {
+    return mock.mockConversations;
   }
 
   // For each conversation, resolve the other participant's info
@@ -685,10 +715,14 @@ export async function getMessages(
 
   if (error) {
     console.error('getMessages error:', error.message);
-    return [];
+    return USE_MOCK_FALLBACK ? mock.mockMessages[conversationId] ?? [] : [];
   }
 
-  return (data ?? []).map(mapMessage);
+  const real = (data ?? []).map(mapMessage);
+  if (USE_MOCK_FALLBACK && real.length === 0) {
+    return mock.mockMessages[conversationId] ?? [];
+  }
+  return real;
 }
 
 export async function sendMessage(
@@ -734,7 +768,7 @@ export async function getReviews(targetUserId: string): Promise<Review[]> {
 
   if (error) {
     console.error('getReviews error:', error.message);
-    return [];
+    return USE_MOCK_FALLBACK ? mock.mockReviews.filter((r) => r.target_id === targetUserId) : [];
   }
 
   // Resolve reviewer names
@@ -756,6 +790,10 @@ export async function getReviews(targetUserId: string): Promise<Review[]> {
       comment: row.comment ?? '',
       created_at: row.created_at,
     });
+  }
+
+  if (USE_MOCK_FALLBACK && reviews.length === 0) {
+    return mock.mockReviews.filter((r) => r.target_id === targetUserId);
   }
 
   return reviews;

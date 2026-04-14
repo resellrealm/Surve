@@ -950,6 +950,184 @@ export const mockMessages: Record<string, Message[]> = {
   ],
 };
 
+// ─── Payments ───────────────────────────────────────────────────────────────
+
+export interface PaymentMethod {
+  id: string;
+  brand: 'visa' | 'mastercard' | 'amex' | 'apple_pay';
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  is_default: boolean;
+}
+
+export interface Transaction {
+  id: string;
+  booking_id: string;
+  title: string;
+  counterparty: string;
+  amount: number;
+  currency: 'USD';
+  direction: 'incoming' | 'outgoing';
+  status: 'paid' | 'pending' | 'refunded' | 'failed';
+  method: string;
+  created_at: string;
+}
+
+export const mockPaymentMethods: PaymentMethod[] = [
+  {
+    id: 'pm_1',
+    brand: 'visa',
+    last4: '4242',
+    exp_month: 11,
+    exp_year: 2027,
+    is_default: true,
+  },
+  {
+    id: 'pm_2',
+    brand: 'mastercard',
+    last4: '8210',
+    exp_month: 3,
+    exp_year: 2028,
+    is_default: false,
+  },
+  {
+    id: 'pm_3',
+    brand: 'apple_pay',
+    last4: '',
+    exp_month: 0,
+    exp_year: 0,
+    is_default: false,
+  },
+];
+
+export const mockTransactions: Transaction[] = [
+  {
+    id: 'txn_1',
+    booking_id: 'booking-1',
+    title: 'Luxury Suite Experience',
+    counterparty: 'The Grand Hotel',
+    amount: 2500,
+    currency: 'USD',
+    direction: 'incoming',
+    status: 'paid',
+    method: 'Visa •• 4242',
+    created_at: '2026-04-01T14:22:00Z',
+  },
+  {
+    id: 'txn_2',
+    booking_id: 'booking-2',
+    title: 'Rooftop Sunset Reel',
+    counterparty: 'Azure Bar & Lounge',
+    amount: 1800,
+    currency: 'USD',
+    direction: 'incoming',
+    status: 'paid',
+    method: 'Mastercard •• 8210',
+    created_at: '2026-03-24T09:47:00Z',
+  },
+  {
+    id: 'txn_3',
+    booking_id: 'booking-3',
+    title: 'Morning Brunch Series',
+    counterparty: 'Fern & Salt Kitchen',
+    amount: 950,
+    currency: 'USD',
+    direction: 'incoming',
+    status: 'pending',
+    method: 'Apple Pay',
+    created_at: '2026-04-10T19:12:00Z',
+  },
+  {
+    id: 'txn_4',
+    booking_id: 'booking-4',
+    title: 'Spa Day Feature',
+    counterparty: 'Halcyon Wellness Retreat',
+    amount: 3200,
+    currency: 'USD',
+    direction: 'incoming',
+    status: 'paid',
+    method: 'Visa •• 4242',
+    created_at: '2026-03-12T11:05:00Z',
+  },
+  {
+    id: 'txn_5',
+    booking_id: 'booking-5',
+    title: 'Platform service fee',
+    counterparty: 'Surve',
+    amount: 120,
+    currency: 'USD',
+    direction: 'outgoing',
+    status: 'paid',
+    method: 'Visa •• 4242',
+    created_at: '2026-04-01T14:22:00Z',
+  },
+];
+
+export interface AppNotification {
+  id: string;
+  type: 'booking' | 'message' | 'review' | 'payment' | 'system';
+  title: string;
+  body: string;
+  created_at: string;
+  read: boolean;
+  avatar_url?: string;
+}
+
+export const mockNotifications: AppNotification[] = [
+  {
+    id: 'n1',
+    type: 'booking',
+    title: 'New booking request',
+    body: 'The Grand Hotel wants to book you for Luxury Suite Experience — $2,500',
+    created_at: '2026-04-14T09:12:00Z',
+    read: false,
+    avatar_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=200',
+  },
+  {
+    id: 'n2',
+    type: 'payment',
+    title: 'Payment received',
+    body: 'You were paid $1,800 for Rooftop Sunset Reel',
+    created_at: '2026-04-13T18:04:00Z',
+    read: false,
+  },
+  {
+    id: 'n3',
+    type: 'message',
+    title: 'James Chen',
+    body: 'Thanks Sarah — can we move the shoot to Saturday 4pm?',
+    created_at: '2026-04-13T11:30:00Z',
+    read: true,
+    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200',
+  },
+  {
+    id: 'n4',
+    type: 'review',
+    title: 'New 5-star review',
+    body: 'Azure Bar & Lounge left you a 5-star review — "Sarah delivered exceptional content"',
+    created_at: '2026-04-12T15:45:00Z',
+    read: true,
+  },
+  {
+    id: 'n5',
+    type: 'system',
+    title: 'Payout ready',
+    body: 'Your $4,300 payout is on the way — expected Apr 17.',
+    created_at: '2026-04-11T08:00:00Z',
+    read: true,
+  },
+  {
+    id: 'n6',
+    type: 'booking',
+    title: 'Booking completed',
+    body: 'Halcyon Wellness Retreat marked Spa Day Feature as complete',
+    created_at: '2026-04-09T16:20:00Z',
+    read: true,
+    avatar_url: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=200',
+  },
+];
+
 // ─── Business Conversations ─────────────────────────────────────────────────
 
 export const mockBusinessConversations: Conversation[] = [

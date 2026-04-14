@@ -11,6 +11,13 @@ import type {
 } from '../types';
 import type { ColorScheme } from '../hooks/useTheme';
 import * as api from './api';
+import {
+  mockCreatorSession,
+  mockBusinessSession,
+  mockListings,
+  mockBookings,
+  mockConversations,
+} from './mockData';
 
 // ─── Auth Slice ──────────────────────────────────────────────────────────────
 
@@ -36,6 +43,7 @@ interface AuthActions {
     role: UserRole
   ) => Promise<boolean>;
   restoreSession: () => Promise<void>;
+  loginAsDemo: (role: UserRole) => void;
 }
 
 // ─── Listings Slice ──────────────────────────────────────────────────────────
@@ -194,6 +202,21 @@ export const useStore = create<AppStore>((set, get) => ({
     } else {
       set({ loading: false, initialized: true });
     }
+  },
+
+  // Instantly populate the app with curated demo content — for screenshots
+  // and previewing without needing a live Supabase account.
+  loginAsDemo: (role) => {
+    const session = role === 'creator' ? mockCreatorSession : mockBusinessSession;
+    set({
+      user: session.user,
+      session,
+      loading: false,
+      initialized: true,
+      listings: mockListings,
+      bookings: mockBookings,
+      conversations: mockConversations,
+    });
   },
 
   // Listings state
