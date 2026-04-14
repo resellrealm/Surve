@@ -350,6 +350,56 @@ export async function getListings(): Promise<Listing[]> {
   return preferMock(real, mock.mockListings);
 }
 
+export async function searchListings(
+  query: string,
+  filters?: {
+    platform?: string;
+    category?: string;
+    sortBy?: string;
+  }
+): Promise<Listing[]> {
+  let q = supabase
+    .from('listings')
+    .select('*, businesses(*, users(*))')
+    .eq('status', 'active');
+
+  if (query.trim()) {
+    const tsQuery = query.trim().split(/\s+/).join(' & ');
+    q = q.textSearch('search_vector', tsQuery, { type: 'plain', config: 'english' });
+  }
+
+  if (filters?.platform && filters.platform !== 'all') {
+    q = q.eq('platform', filters.platform);
+  }
+  if (filters?.category && filters.category !== 'all') {
+    q = q.eq('category', filters.category);
+  }
+
+  switch (filters?.sortBy) {
+    case 'highest_pay':
+      q = q.order('pay_max', { ascending: false });
+      break;
+    default:
+      q = q.order('created_at', { ascending: false });
+      break;
+  }
+
+  const { data, error } = await q;
+
+  if (error) {
+    console.error('searchListings error:', error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row: any) => {
+    if (row.businesses) {
+      row.businesses.user = row.businesses.users;
+    }
+    row.business_profiles = row.businesses;
+    return mapListing(row);
+  });
+}
+
 export async function getListing(id: string): Promise<Listing | null> {
   const { data, error } = await supabase
     .from('listings')
@@ -502,6 +552,19 @@ export async function updateCreatorProfile(
 
   (data as any).user = (data as any).users;
   return mapCreator(data);
+}
+
+export async function completeOnboarding(userId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('users')
+    .update({ onboarding_completed_at: new Date().toISOString() })
+    .eq('id', userId);
+
+  if (error) {
+    console.error('completeOnboarding error:', error.message);
+    return false;
+  }
+  return true;
 }
 
 // ─── Businesses ─────────────────────────────────────────────────────────────
