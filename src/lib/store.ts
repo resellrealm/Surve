@@ -8,6 +8,7 @@ import type {
   ListingFilters,
   BookingStatus,
   UserRole,
+  Category,
 } from '../types';
 import type { ColorScheme } from '../hooks/useTheme';
 import * as api from './api';
@@ -53,6 +54,7 @@ interface ListingsState {
   selectedListing: Listing | null;
   filters: ListingFilters;
   listingsLoading: boolean;
+  listingsError: string | null;
 }
 
 interface ListingsActions {
@@ -72,6 +74,7 @@ interface ListingsActions {
 interface BookingsState {
   bookings: Booking[];
   bookingsLoading: boolean;
+  bookingsError: string | null;
 }
 
 interface BookingsActions {
@@ -89,6 +92,7 @@ interface BookingsActions {
 interface MessagesState {
   conversations: Conversation[];
   messagesLoading: boolean;
+  messagesError: string | null;
 }
 
 interface MessagesActions {
@@ -98,6 +102,82 @@ interface MessagesActions {
   getUnreadCount: () => number;
   fetchConversations: () => Promise<void>;
 }
+
+// ─── Onboarding Draft Slice ─────────────────────────────────────────────────
+
+export interface BusinessDraft {
+  business_name: string;
+  category: Category | '';
+  location: string;
+  hours: Record<string, { open: string; close: string; closed: boolean }>;
+  description: string;
+  website: string;
+  phone: string;
+  coverPhotoUri: string;
+  galleryUris: string[];
+}
+
+export interface CreatorDraft {
+  full_name: string;
+  bio: string;
+  location: string;
+  instagram_handle: string;
+  tiktok_handle: string;
+  instagram_followers: string;
+  tiktok_followers: string;
+  engagement_rate: string;
+  avg_views: string;
+  categories: Category[];
+  portfolio_uris: string[];
+}
+
+const defaultCreatorDraft: CreatorDraft = {
+  full_name: '',
+  bio: '',
+  location: '',
+  instagram_handle: '',
+  tiktok_handle: '',
+  instagram_followers: '',
+  tiktok_followers: '',
+  engagement_rate: '',
+  avg_views: '',
+  categories: [],
+  portfolio_uris: [],
+};
+
+interface OnboardingState {
+  businessDraft: BusinessDraft;
+  creatorDraft: CreatorDraft;
+  onboardingRole: 'creator' | 'business' | null;
+}
+
+interface OnboardingActions {
+  updateBusinessDraft: (updates: Partial<BusinessDraft>) => void;
+  clearBusinessDraft: () => void;
+  updateCreatorDraft: (updates: Partial<CreatorDraft>) => void;
+  clearCreatorDraft: () => void;
+  setOnboardingRole: (role: 'creator' | 'business' | null) => void;
+}
+
+const defaultBusinessDraft: BusinessDraft = {
+  business_name: '',
+  category: '',
+  location: '',
+  hours: {
+    Monday: { open: '09:00', close: '17:00', closed: false },
+    Tuesday: { open: '09:00', close: '17:00', closed: false },
+    Wednesday: { open: '09:00', close: '17:00', closed: false },
+    Thursday: { open: '09:00', close: '17:00', closed: false },
+    Friday: { open: '09:00', close: '17:00', closed: false },
+    Saturday: { open: '10:00', close: '15:00', closed: false },
+    Sunday: { open: '10:00', close: '15:00', closed: true },
+  },
+  description: '',
+  website: '',
+  phone: '',
+  coverPhotoUri: '',
+  galleryUris: [],
+};
 
 // ─── UI Slice ────────────────────────────────────────────────────────────────
 
@@ -122,11 +202,12 @@ const defaultFilters: ListingFilters = {
 
 // ─── Combined Store ──────────────────────────────────────────────────────────
 
-type StoreState = AuthState & ListingsState & BookingsState & MessagesState & UIState;
+type StoreState = AuthState & ListingsState & BookingsState & MessagesState & OnboardingState & UIState;
 type StoreActions = AuthActions &
   ListingsActions &
   BookingsActions &
   MessagesActions &
+  OnboardingActions &
   UIActions;
 export type AppStore = StoreState & StoreActions;
 
@@ -224,6 +305,7 @@ export const useStore = create<AppStore>((set, get) => ({
   selectedListing: null,
   filters: defaultFilters,
   listingsLoading: false,
+  listingsError: null,
 
   // Listings actions
   setListings: (listings) => set({ listings }),
@@ -252,14 +334,19 @@ export const useStore = create<AppStore>((set, get) => ({
   setListingsLoading: (loading) => set({ listingsLoading: loading }),
 
   fetchListings: async () => {
-    set({ listingsLoading: true });
-    const listings = await api.getListings();
-    set({ listings, listingsLoading: false });
+    set({ listingsLoading: true, listingsError: null });
+    try {
+      const listings = await api.getListings();
+      set({ listings, listingsLoading: false });
+    } catch (e: any) {
+      set({ listingsLoading: false, listingsError: e?.message ?? 'Failed to load listings' });
+    }
   },
 
   // Bookings state
   bookings: [],
   bookingsLoading: false,
+  bookingsError: null,
 
   // Bookings actions
   setBookings: (bookings) => set({ bookings }),
@@ -283,14 +370,19 @@ export const useStore = create<AppStore>((set, get) => ({
   fetchBookings: async () => {
     const userId = get().user?.id;
     if (!userId) return;
-    set({ bookingsLoading: true });
-    const bookings = await api.getBookings(userId);
-    set({ bookings, bookingsLoading: false });
+    set({ bookingsLoading: true, bookingsError: null });
+    try {
+      const bookings = await api.getBookings(userId);
+      set({ bookings, bookingsLoading: false });
+    } catch (e: any) {
+      set({ bookingsLoading: false, bookingsError: e?.message ?? 'Failed to load bookings' });
+    }
   },
 
   // Messages state
   conversations: [],
   messagesLoading: false,
+  messagesError: null,
 
   // Messages actions
   setConversations: (conversations) => set({ conversations }),
@@ -308,10 +400,32 @@ export const useStore = create<AppStore>((set, get) => ({
   fetchConversations: async () => {
     const userId = get().user?.id;
     if (!userId) return;
-    set({ messagesLoading: true });
-    const conversations = await api.getConversations(userId);
-    set({ conversations, messagesLoading: false });
+    set({ messagesLoading: true, messagesError: null });
+    try {
+      const conversations = await api.getConversations(userId);
+      set({ conversations, messagesLoading: false });
+    } catch (e: any) {
+      set({ messagesLoading: false, messagesError: e?.message ?? 'Failed to load messages' });
+    }
   },
+
+  // Onboarding state
+  businessDraft: defaultBusinessDraft,
+  creatorDraft: defaultCreatorDraft,
+  onboardingRole: null,
+
+  // Onboarding actions
+  updateBusinessDraft: (updates) =>
+    set((state) => ({
+      businessDraft: { ...state.businessDraft, ...updates },
+    })),
+  clearBusinessDraft: () => set({ businessDraft: defaultBusinessDraft }),
+  updateCreatorDraft: (updates) =>
+    set((state) => ({
+      creatorDraft: { ...state.creatorDraft, ...updates },
+    })),
+  clearCreatorDraft: () => set({ creatorDraft: defaultCreatorDraft }),
+  setOnboardingRole: (role) => set({ onboardingRole: role }),
 
   // UI state
   themePreference: 'system',

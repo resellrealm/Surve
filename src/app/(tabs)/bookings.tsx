@@ -13,12 +13,13 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
-import { CalendarCheck } from 'lucide-react-native';
+import { CalendarCheck, AlertTriangle, RotateCcw } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { BookingCard } from '../../components/booking/BookingCard';
+import { Skeleton } from '../../components/ui/Skeleton';
 import {
   Typography,
   Spacing,
@@ -37,6 +38,23 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'pending', label: 'Pending' },
   { key: 'completed', label: 'Completed' },
 ];
+
+function BookingsSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.md }}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={{ gap: Spacing.sm, padding: Spacing.lg, borderRadius: BorderRadius.lg }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Skeleton width={160} height={18} />
+            <Skeleton width={70} height={24} borderRadius={BorderRadius.full} />
+          </View>
+          <Skeleton width="80%" height={14} />
+          <Skeleton width="50%" height={14} />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function TabButton({
   label,
@@ -82,6 +100,9 @@ function TabButton({
         },
         animatedStyle,
       ]}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${label} bookings, ${count} items`}
     >
       <Text
         style={[
@@ -120,7 +141,7 @@ export default function BookingsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { bookings, user } = useStore();
+  const { bookings, user, bookingsLoading, bookingsError, fetchBookings } = useStore();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
 
   const filteredBookings = useMemo(() => {
@@ -174,7 +195,7 @@ export default function BookingsScreen() {
 
   const renderEmpty = useCallback(
     () => (
-      <View style={styles.emptyState}>
+      <View style={styles.emptyState} accessibilityRole="text">
         <View
           style={[
             styles.emptyIcon,
@@ -204,6 +225,8 @@ export default function BookingsScreen() {
               router.push('/(tabs)/search');
             }}
             style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+            accessibilityRole="button"
+            accessibilityLabel="Browse listings"
           >
             <Text style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Browse Listings</Text>
           </Pressable>
@@ -213,13 +236,59 @@ export default function BookingsScreen() {
     [colors, activeTab, router]
   );
 
+  if (bookingsLoading && bookings.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+          <Text style={[styles.title, { color: colors.text }]}>Bookings</Text>
+        </View>
+        <View style={styles.tabsRow}>
+          {tabs.map((tab) => (
+            <Skeleton key={tab.key} width={90} height={36} borderRadius={BorderRadius.full} />
+          ))}
+        </View>
+        <BookingsSkeleton />
+      </View>
+    );
+  }
+
+  if (bookingsError && bookings.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]} accessibilityRole="alert">
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+          <Text style={[styles.title, { color: colors.text }]}>Bookings</Text>
+        </View>
+        <View style={styles.errorState}>
+          <View style={[styles.errorIcon, { backgroundColor: colors.cancelledLight }]}>
+            <AlertTriangle size={40} color={colors.error} strokeWidth={1.5} />
+          </View>
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            Couldn't load bookings
+          </Text>
+          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+            {bookingsError}
+          </Text>
+          <Pressable
+            onPress={() => fetchBookings()}
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading bookings"
+          >
+            <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
+            <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
         <Text style={[styles.title, { color: colors.text }]}>Bookings</Text>
       </View>
 
-      <View style={styles.tabsRow}>
+      <View style={styles.tabsRow} accessibilityRole="tablist">
         {tabs.map((tab) => (
           <TabButton
             key={tab.key}
@@ -319,6 +388,40 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   emptyCtaText: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+  },
+  errorState: {
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: Spacing.xxl,
+  },
+  errorIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xl,
+  },
+  errorTitle: {
+    ...Typography.title3,
+    marginBottom: Spacing.sm,
+  },
+  errorSubtitle: {
+    ...Typography.subheadline,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  retryText: {
     ...Typography.subheadline,
     fontWeight: '600',
   },

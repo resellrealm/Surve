@@ -60,6 +60,8 @@ export function CreatorCard({ creator, onPress }: CreatorCardProps) {
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      accessibilityRole="button"
+      accessibilityLabel={`Creator: ${creator.user.full_name}, rated ${creator.rating.toFixed(1)}`}
       style={[
         styles.container,
         {

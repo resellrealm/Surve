@@ -29,6 +29,9 @@ import {
   Instagram,
   Wallet,
   CreditCard,
+  AlertTriangle,
+  RotateCcw,
+  User as UserIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
@@ -38,6 +41,7 @@ import { Badge } from '../../components/ui/Badge';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
 import { StatsRow } from '../../components/creator/StatsRow';
 import { Card } from '../../components/ui/Card';
+import { Skeleton } from '../../components/ui/Skeleton';
 import * as api from '../../lib/api';
 import {
   Typography,
@@ -56,6 +60,24 @@ interface SettingsRowProps {
   subtitle?: string;
   onPress: () => void;
   destructive?: boolean;
+}
+
+function ProfileSkeleton() {
+  return (
+    <View style={{ alignItems: 'center', gap: Spacing.lg, paddingHorizontal: Spacing.lg }}>
+      <Skeleton width={80} height={80} borderRadius={40} />
+      <Skeleton width={160} height={22} />
+      <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+        <Skeleton width={70} height={24} borderRadius={BorderRadius.full} />
+        <Skeleton width={70} height={24} borderRadius={BorderRadius.full} />
+      </View>
+      <View style={{ width: '100%', gap: Spacing.md, marginTop: Spacing.lg }}>
+        <Skeleton width="100%" height={120} borderRadius={BorderRadius.lg} />
+        <Skeleton width="100%" height={100} borderRadius={BorderRadius.lg} />
+        <Skeleton width="100%" height={180} borderRadius={BorderRadius.lg} />
+      </View>
+    </View>
+  );
 }
 
 function SettingsRow({
@@ -91,6 +113,8 @@ function SettingsRow({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       style={[styles.settingsRow, animatedStyle]}
+      accessibilityRole="button"
+      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
     >
       <View
         style={[
@@ -133,14 +157,31 @@ export default function ProfileScreen() {
   const isCreator = user?.role === 'creator';
   const [creatorData, setCreatorData] = React.useState<import('../../types').Creator | null>(null);
   const [businessData, setBusinessData] = React.useState<import('../../types').Business | null>(null);
+  const [profileLoading, setProfileLoading] = React.useState(true);
+  const [profileError, setProfileError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!user) return;
-    if (isCreator) {
-      api.getCreatorProfile(user.id).then(setCreatorData);
-    } else {
-      api.getBusinessProfile(user.id).then(setBusinessData);
-    }
+    setProfileLoading(true);
+    setProfileError(null);
+    const load = isCreator
+      ? api.getCreatorProfile(user.id).then(setCreatorData)
+      : api.getBusinessProfile(user.id).then(setBusinessData);
+    load
+      .catch((e: any) => setProfileError(e?.message ?? 'Failed to load profile'))
+      .finally(() => setProfileLoading(false));
+  }, [user, isCreator]);
+
+  const handleRetry = useCallback(() => {
+    if (!user) return;
+    setProfileLoading(true);
+    setProfileError(null);
+    const load = isCreator
+      ? api.getCreatorProfile(user.id).then(setCreatorData)
+      : api.getBusinessProfile(user.id).then(setBusinessData);
+    load
+      .catch((e: any) => setProfileError(e?.message ?? 'Failed to load profile'))
+      .finally(() => setProfileLoading(false));
   }, [user, isCreator]);
 
   const handleLogout = useCallback(() => {
@@ -148,6 +189,47 @@ export default function ProfileScreen() {
     logout();
     router.replace('/auth');
   }, [logout, router]);
+
+  if (profileLoading && !creatorData && !businessData) {
+    return (
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + Spacing.sm + Spacing.xl },
+        ]}
+      >
+        <ProfileSkeleton />
+      </ScrollView>
+    );
+  }
+
+  if (profileError && !creatorData && !businessData) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]} accessibilityRole="alert">
+        <View style={[styles.errorState, { paddingTop: insets.top + 80 }]}>
+          <View style={[styles.errorIcon, { backgroundColor: colors.cancelledLight }]}>
+            <AlertTriangle size={40} color={colors.error} strokeWidth={1.5} />
+          </View>
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            Couldn't load profile
+          </Text>
+          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+            {profileError}
+          </Text>
+          <Pressable
+            onPress={handleRetry}
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading profile"
+          >
+            <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
+            <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -221,7 +303,7 @@ export default function ProfileScreen() {
             <Text style={[styles.cardTitle, { color: colors.text }]}>
               Performance
             </Text>
-            <View style={styles.perfRow}>
+            <View style={styles.perfRow} accessibilityRole="summary">
               <View style={styles.perfItem}>
                 <Star size={20} color={colors.rating} fill={colors.rating} strokeWidth={2} />
                 <Text style={[styles.perfValue, { color: colors.text }]}>
@@ -283,6 +365,7 @@ export default function ProfileScreen() {
                   key={idx}
                   source={{ uri: url }}
                   style={styles.portfolioImage}
+                  accessibilityLabel={`Portfolio image ${idx + 1}`}
                 />
               ))}
             </ScrollView>
@@ -302,7 +385,7 @@ export default function ProfileScreen() {
             >
               {businessData.description}
             </Text>
-            <View style={styles.perfRow}>
+            <View style={styles.perfRow} accessibilityRole="summary">
               <View style={styles.perfItem}>
                 <Star size={20} color={colors.rating} fill={colors.rating} strokeWidth={2} />
                 <Text style={[styles.perfValue, { color: colors.text }]}>
@@ -528,5 +611,39 @@ const styles = StyleSheet.create({
     ...Typography.caption1,
     textAlign: 'center',
     marginBottom: Spacing.xl,
+  },
+  errorState: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xxl,
+  },
+  errorIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xl,
+  },
+  errorTitle: {
+    ...Typography.title3,
+    marginBottom: Spacing.sm,
+  },
+  errorSubtitle: {
+    ...Typography.subheadline,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  retryText: {
+    ...Typography.subheadline,
+    fontWeight: '600',
   },
 });

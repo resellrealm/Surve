@@ -43,6 +43,9 @@ function FilterChip({ label, selected, onPress }: FilterChipProps) {
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      accessibilityRole="button"
+      accessibilityLabel={`Filter: ${label}`}
+      accessibilityState={{ selected }}
       style={[
         styles.chip,
         {

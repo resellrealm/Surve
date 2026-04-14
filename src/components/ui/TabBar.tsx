@@ -85,7 +85,8 @@ function TabButton({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       style={styles.tabButton}
-      accessibilityRole="button"
+      accessibilityRole="tab"
+      accessibilityLabel={routeKey}
       accessibilityState={isFocused ? { selected: true } : {}}
     >
       <Animated.View style={[styles.tabIconWrapper, animatedStyle]}>

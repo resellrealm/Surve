@@ -72,6 +72,8 @@ export function ListingCard({ listing, onPress }: ListingCardProps) {
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      accessibilityRole="button"
+      accessibilityLabel={`Listing: ${listing.title} by ${listing.business.business_name}`}
       style={[
         styles.container,
         {

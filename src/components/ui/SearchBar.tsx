@@ -51,9 +51,10 @@ export function SearchBar({
         returnKeyType="search"
         autoCapitalize="none"
         autoCorrect={false}
+        accessibilityLabel={placeholder}
       />
       {value.length > 0 && (
-        <Pressable onPress={handleClear} style={styles.clearButton}>
+        <Pressable onPress={handleClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear search">
           <X size={18} color={colors.textTertiary} strokeWidth={2} />
         </Pressable>
       )}

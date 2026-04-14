@@ -75,6 +75,8 @@ export function BookingCard({ booking, onPress, userRole }: BookingCardProps) {
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={!onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Booking with ${displayName}, ${booking.listing.title}, status: ${booking.status}`}
       style={[
         styles.container,
         {

@@ -13,12 +13,13 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
-import { MessageCircle } from 'lucide-react-native';
+import { MessageCircle, AlertTriangle, RotateCcw } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { Avatar } from '../../components/ui/Avatar';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { Typography, Spacing, BorderRadius, Shadows, Springs, Layout } from '../../constants/theme';
 import type { Conversation } from '../../types';
 
@@ -38,6 +39,25 @@ function formatTime(dateStr: string): string {
   if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
   if (diffHours < 48) return 'Yesterday';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function ConversationSkeleton() {
+  return (
+    <View style={{ gap: Spacing.sm, paddingHorizontal: Spacing.lg }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <View key={i} style={{ flexDirection: 'row', gap: Spacing.md, paddingVertical: Spacing.md }}>
+          <Skeleton width={52} height={52} borderRadius={26} />
+          <View style={{ flex: 1, gap: Spacing.xs, justifyContent: 'center' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Skeleton width={120} height={16} />
+              <Skeleton width={50} height={12} />
+            </View>
+            <Skeleton width="80%" height={14} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function ConversationRow({ conversation, onPress }: ConversationRowProps) {
@@ -75,6 +95,8 @@ function ConversationRow({ conversation, onPress }: ConversationRowProps) {
         },
         animatedStyle,
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Conversation with ${conversation.participant_name}${hasUnread ? `, ${conversation.unread_count} unread` : ''}`}
     >
       <Avatar
         uri={conversation.participant_avatar}
@@ -135,6 +157,7 @@ function ConversationRow({ conversation, onPress }: ConversationRowProps) {
                 styles.unreadBadge,
                 { backgroundColor: colors.primary },
               ]}
+              accessibilityLabel={`${conversation.unread_count} unread messages`}
             >
               <Text style={[styles.unreadCount, { color: colors.onPrimary }]}>
                 {conversation.unread_count}
@@ -151,7 +174,7 @@ export default function MessagesScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { conversations } = useStore();
+  const { conversations, messagesLoading, messagesError, fetchConversations } = useStore();
 
   const handleConversationPress = useCallback(
     (conversation: Conversation) => {
@@ -174,7 +197,7 @@ export default function MessagesScreen() {
 
   const renderEmpty = useCallback(
     () => (
-      <View style={styles.emptyState}>
+      <View style={styles.emptyState} accessibilityRole="text">
         <View
           style={[
             styles.emptyIcon,
@@ -195,6 +218,8 @@ export default function MessagesScreen() {
             router.push('/(tabs)/search');
           }}
           style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+          accessibilityRole="button"
+          accessibilityLabel="Discover listings"
         >
           <Text style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Discover Listings</Text>
         </Pressable>
@@ -208,6 +233,47 @@ export default function MessagesScreen() {
     0
   );
 
+  if (messagesLoading && conversations.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+          <Text style={[styles.title, { color: colors.text }]}>Messages</Text>
+        </View>
+        <ConversationSkeleton />
+      </View>
+    );
+  }
+
+  if (messagesError && conversations.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]} accessibilityRole="alert">
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+          <Text style={[styles.title, { color: colors.text }]}>Messages</Text>
+        </View>
+        <View style={styles.errorState}>
+          <View style={[styles.errorIcon, { backgroundColor: colors.cancelledLight }]}>
+            <AlertTriangle size={40} color={colors.error} strokeWidth={1.5} />
+          </View>
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            Couldn't load messages
+          </Text>
+          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+            {messagesError}
+          </Text>
+          <Pressable
+            onPress={() => fetchConversations()}
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading messages"
+          >
+            <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
+            <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
@@ -218,6 +284,7 @@ export default function MessagesScreen() {
               styles.headerBadge,
               { backgroundColor: colors.primary },
             ]}
+            accessibilityLabel={`${totalUnread} new messages`}
           >
             <Text style={[styles.headerBadgeText, { color: colors.onPrimary }]}>
               {totalUnread} new
@@ -353,6 +420,40 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   emptyCtaText: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+  },
+  errorState: {
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: Spacing.xxl,
+  },
+  errorIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xl,
+  },
+  errorTitle: {
+    ...Typography.title3,
+    marginBottom: Spacing.sm,
+  },
+  errorSubtitle: {
+    ...Typography.subheadline,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  retryText: {
     ...Typography.subheadline,
     fontWeight: '600',
   },
