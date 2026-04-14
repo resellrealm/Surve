@@ -40,6 +40,7 @@ yarn-error.*
 /android
 package-lock.json
 
-# Supabase local (keep edge functions tracked)
+# Supabase local (keep edge functions + migrations tracked)
 supabase/
 !supabase/functions/
+!supabase/migrations/
