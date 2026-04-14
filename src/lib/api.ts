@@ -15,11 +15,17 @@ import type {
   Platform,
   ListingStatus,
   BookingStatus,
+  Notification,
+  PaymentMethod,
+  Transaction,
+  Application,
 } from '../types';
 
-// Show curated demo content when the DB has no matching rows yet.
-// Real rows always win; mocks only surface on an empty result.
-const USE_MOCK_FALLBACK = true;
+// Fallback to curated demo content when the DB is empty (dev + screenshots).
+// Flip off for production to always hit the real DB.
+const USE_MOCK_FALLBACK =
+  (process.env.EXPO_PUBLIC_USE_MOCK_FALLBACK ?? 'true') !== 'false';
+
 const preferMock = <T,>(real: T[], fallback: T[]): T[] =>
   USE_MOCK_FALLBACK && real.length === 0 ? fallback : real;
 
@@ -32,6 +38,10 @@ function mapUser(row: any): User {
     full_name: row.full_name,
     avatar_url: row.avatar_url,
     role: row.role as UserRole,
+    onboarding_completed_at: row.onboarding_completed_at ?? null,
+    email_verified_at: row.email_verified_at ?? null,
+    accepted_terms_at: row.accepted_terms_at ?? null,
+    terms_version: row.terms_version ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -119,6 +129,11 @@ function mapBooking(row: any): Booking {
     created_at: row.created_at,
     updated_at: row.updated_at,
     completed_at: row.completed_at,
+    proof_url: row.proof_url ?? null,
+    proof_screenshots: row.proof_screenshots ?? null,
+    proof_note: row.proof_note ?? null,
+    proof_submitted_at: row.proof_submitted_at ?? null,
+    auto_approve_at: row.auto_approve_at ?? null,
   };
 }
 
@@ -175,53 +190,69 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: { full_name: fullName, role },
-    },
+    options: { data: { full_name: fullName, role } },
   });
 
-  if (error || !data.user || !data.session) {
+  if (error || !data.user) {
     console.error('signUp error:', error?.message);
     return null;
   }
 
-  // Create user row
-  const { error: profileErr } = await supabase.from('users').insert({
-    id: data.user.id,
-    email,
-    full_name: fullName,
-    role,
-  });
+  // Trigger `on_auth_user_created` populates public.users + role profile.
+  // If email confirmations are ON, we won't have a session yet — bail gracefully.
+  if (!data.session) return null;
 
-  if (profileErr) {
-    console.error('user insert error:', profileErr.message);
-  }
+  await supabase
+    .from('users')
+    .update({
+      accepted_terms_at: new Date().toISOString(),
+      terms_version: 'v1.0.0',
+    })
+    .eq('id', data.user.id);
 
-  // Create role-specific profile
-  if (role === 'creator') {
-    await supabase.from('creators').insert({ user_id: data.user.id });
-  } else {
-    await supabase.from('businesses').insert({ user_id: data.user.id });
-  }
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', data.user.id)
+    .maybeSingle();
 
-  const user: User = {
-    id: data.user.id,
-    email,
-    full_name: fullName,
-    avatar_url: null,
-    role,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  const user: User = userRow
+    ? mapUser(userRow)
+    : {
+        id: data.user.id,
+        email,
+        full_name: fullName,
+        avatar_url: null,
+        role,
+        onboarding_completed_at: null,
+        email_verified_at: null,
+        accepted_terms_at: new Date().toISOString(),
+        terms_version: 'v1.0.0',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-  const session: Session = {
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
-    expires_at: data.session.expires_at ?? 0,
+  return {
     user,
+    session: {
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at ?? 0,
+      user,
+    },
   };
+}
 
-  return { user, session };
+export async function resendVerificationEmail(email: string): Promise<boolean> {
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email,
+  });
+  if (error) {
+    console.error('resendVerificationEmail error:', error.message);
+    return false;
+  }
+  return true;
 }
 
 export async function signIn(
@@ -393,21 +424,7 @@ export async function applyToListing(
     console.error('applyToListing error:', error.message);
     return false;
   }
-
-  // Increment applicants_count — best effort
-  const { data: listing } = await supabase
-    .from('listings')
-    .select('applicants_count')
-    .eq('id', listingId)
-    .single();
-
-  if (listing) {
-    await supabase
-      .from('listings')
-      .update({ applicants_count: (listing.applicants_count ?? 0) + 1 })
-      .eq('id', listingId);
-  }
-
+  // Trigger `trg_app_count_ins` handles applicants_count — don't race it here.
   return true;
 }
 
@@ -621,7 +638,16 @@ export async function createBooking(booking: {
 
 export async function updateBooking(
   id: string,
-  updates: { status?: BookingStatus; notes?: string; completed_at?: string }
+  updates: {
+    status?: BookingStatus;
+    notes?: string;
+    completed_at?: string;
+    proof_url?: string;
+    proof_screenshots?: string[];
+    proof_note?: string | null;
+    proof_submitted_at?: string;
+    auto_approve_at?: string;
+  }
 ): Promise<boolean> {
   const { error } = await supabase
     .from('bookings')
@@ -744,16 +770,7 @@ export async function sendMessage(
     console.error('sendMessage error:', error?.message);
     return null;
   }
-
-  // Update conversation's last_message
-  await supabase
-    .from('conversations')
-    .update({
-      last_message: content,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', conversationId);
-
+  // Trigger `trg_conv_last_msg` syncs conversation.last_message + updated_at.
   return mapMessage(data);
 }
 
@@ -812,4 +829,363 @@ export async function createReview(review: {
     return false;
   }
   return true;
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+function mapNotification(row: any): Notification {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    type: row.type,
+    title: row.title,
+    body: row.body ?? '',
+    data: row.data ?? {},
+    read: row.read ?? false,
+    created_at: row.created_at,
+  };
+}
+
+export async function getNotifications(userId: string): Promise<Notification[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    console.error('getNotifications error:', error.message);
+    return [];
+  }
+  return (data ?? []).map(mapNotification);
+}
+
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export async function markNotificationRead(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('id', id);
+  return !error;
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  return !error;
+}
+
+// ─── Payment Methods ────────────────────────────────────────────────────────
+
+function mapPaymentMethod(row: any): PaymentMethod {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    stripe_payment_method_id: row.stripe_payment_method_id,
+    brand: row.brand,
+    last4: row.last4,
+    exp_month: row.exp_month,
+    exp_year: row.exp_year,
+    is_default: row.is_default ?? false,
+    created_at: row.created_at,
+  };
+}
+
+export async function getPaymentMethods(userId: string): Promise<PaymentMethod[]> {
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .select('*')
+    .eq('user_id', userId)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error('getPaymentMethods error:', error.message);
+    return [];
+  }
+  return (data ?? []).map(mapPaymentMethod);
+}
+
+export async function addPaymentMethod(pm: {
+  user_id: string;
+  stripe_payment_method_id: string;
+  brand: string;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  make_default?: boolean;
+}): Promise<PaymentMethod | null> {
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .insert({
+      user_id: pm.user_id,
+      stripe_payment_method_id: pm.stripe_payment_method_id,
+      brand: pm.brand,
+      last4: pm.last4,
+      exp_month: pm.exp_month,
+      exp_year: pm.exp_year,
+      is_default: pm.make_default ?? false,
+    })
+    .select()
+    .single();
+  if (error || !data) {
+    console.error('addPaymentMethod error:', error?.message);
+    return null;
+  }
+  return mapPaymentMethod(data);
+}
+
+export async function setDefaultPaymentMethod(id: string): Promise<boolean> {
+  // Trigger enforces single default per user.
+  const { error } = await supabase
+    .from('payment_methods')
+    .update({ is_default: true })
+    .eq('id', id);
+  return !error;
+}
+
+export async function deletePaymentMethod(id: string): Promise<boolean> {
+  const { error } = await supabase.from('payment_methods').delete().eq('id', id);
+  return !error;
+}
+
+// ─── Transactions ───────────────────────────────────────────────────────────
+
+function mapTransaction(row: any): Transaction {
+  return {
+    id: row.id,
+    booking_id: row.booking_id,
+    payer_id: row.payer_id,
+    payee_id: row.payee_id,
+    kind: row.kind,
+    amount_cents: row.amount_cents,
+    currency: row.currency ?? 'usd',
+    status: row.status,
+    stripe_payment_intent_id: row.stripe_payment_intent_id,
+    description: row.description ?? '',
+    created_at: row.created_at,
+  };
+}
+
+export async function getTransactions(userId: string): Promise<Transaction[]> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .or(`payer_id.eq.${userId},payee_id.eq.${userId}`)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    console.error('getTransactions error:', error.message);
+    return [];
+  }
+  return (data ?? []).map(mapTransaction);
+}
+
+export async function getEarningsSummary(userId: string): Promise<{
+  total_cents: number;
+  pending_cents: number;
+  this_month_cents: number;
+}> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('amount_cents, status, created_at, kind')
+    .eq('payee_id', userId);
+  if (error || !data) return { total_cents: 0, pending_cents: 0, this_month_cents: 0 };
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  let total = 0;
+  let pending = 0;
+  let thisMonth = 0;
+  for (const r of data) {
+    if (r.kind !== 'payout') continue;
+    if (r.status === 'succeeded') {
+      total += r.amount_cents;
+      if (r.created_at >= startOfMonth) thisMonth += r.amount_cents;
+    } else if (r.status === 'pending') {
+      pending += r.amount_cents;
+    }
+  }
+  return { total_cents: total, pending_cents: pending, this_month_cents: thisMonth };
+}
+
+// ─── Message Reads / Unread Counts ──────────────────────────────────────────
+
+export async function markConversationRead(
+  userId: string,
+  conversationId: string
+): Promise<boolean> {
+  const { error } = await supabase.from('message_reads').upsert(
+    {
+      user_id: userId,
+      conversation_id: conversationId,
+      last_read_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,conversation_id' }
+  );
+  return !error;
+}
+
+export async function getUnreadMessageCount(userId: string): Promise<number> {
+  // Find conversations the user is in, then count messages from others after last_read_at.
+  const { data: convs } = await supabase
+    .from('conversations')
+    .select('id')
+    .contains('participant_ids', [userId]);
+  if (!convs || convs.length === 0) return 0;
+
+  const { data: reads } = await supabase
+    .from('message_reads')
+    .select('conversation_id, last_read_at')
+    .eq('user_id', userId);
+  const readMap = new Map<string, string>();
+  for (const r of reads ?? []) readMap.set(r.conversation_id, r.last_read_at);
+
+  let total = 0;
+  for (const c of convs) {
+    const since = readMap.get(c.id) ?? '1970-01-01T00:00:00Z';
+    const { count } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('conversation_id', c.id)
+      .neq('sender_id', userId)
+      .gt('created_at', since);
+    total += count ?? 0;
+  }
+  return total;
+}
+
+// ─── Conversations: start-or-get helper ─────────────────────────────────────
+
+export async function startConversation(
+  userIdA: string,
+  userIdB: string,
+  listingId?: string
+): Promise<Conversation | null> {
+  const participants = [userIdA, userIdB].sort();
+  const { data: existing } = await supabase
+    .from('conversations')
+    .select('*')
+    .contains('participant_ids', participants)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing && (existing as any).participant_ids?.length === 2) {
+    return mapConversation(existing, userIdA);
+  }
+
+  const { data, error } = await supabase
+    .from('conversations')
+    .insert({ participant_ids: participants, listing_id: listingId ?? null })
+    .select()
+    .single();
+  if (error || !data) {
+    console.error('startConversation error:', error?.message);
+    return null;
+  }
+  return mapConversation(data, userIdA);
+}
+
+// ─── Realtime subscriptions ─────────────────────────────────────────────────
+// Return an unsubscribe function. Keep channel names unique so reruns don't stack.
+
+export function subscribeToConversationMessages(
+  conversationId: string,
+  onMessage: (msg: Message) => void
+): () => void {
+  const channel = supabase
+    .channel(`messages:${conversationId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => onMessage(mapMessage(payload.new))
+    )
+    .subscribe();
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+export function subscribeToUserNotifications(
+  userId: string,
+  onNotification: (n: Notification) => void
+): () => void {
+  const channel = supabase
+    .channel(`notifications:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => onNotification(mapNotification(payload.new))
+    )
+    .subscribe();
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+export function subscribeToUserBookings(
+  userId: string,
+  onChange: () => void
+): () => void {
+  // We don't know the creator/business profile IDs upfront — just listen broadly
+  // and let the store refetch.
+  const channel = supabase
+    .channel(`bookings:${userId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'bookings' },
+      () => onChange()
+    )
+    .subscribe();
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+// ─── Storage helpers ────────────────────────────────────────────────────────
+
+export async function uploadUserFile(
+  bucket: 'avatars' | 'listing-images' | 'portfolio',
+  userId: string,
+  file: { uri: string; name: string; type: string }
+): Promise<string | null> {
+  // Path prefix = userId (required by RLS policy).
+  const path = `${userId}/${Date.now()}_${file.name}`;
+
+  // React Native: fetch the URI as a blob.
+  const response = await fetch(file.uri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) {
+    console.error(`upload ${bucket} error:`, error.message);
+    return null;
+  }
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
 }

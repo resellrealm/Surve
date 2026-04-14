@@ -1,11 +1,15 @@
 import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, View, Text, Pressable, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AlertTriangle, X } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
-import { Colors } from '../constants/theme';
+import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { useState } from 'react';
 
 export default function RootLayout() {
   const colorScheme = (useColorScheme() ?? 'light') as 'light' | 'dark';
@@ -43,6 +47,10 @@ export default function RootLayout() {
               full_name: userData.full_name,
               avatar_url: userData.avatar_url,
               role: userData.role as 'creator' | 'business',
+              onboarding_completed_at: userData.onboarding_completed_at ?? null,
+              email_verified_at: userData.email_verified_at ?? null,
+              accepted_terms_at: userData.accepted_terms_at ?? null,
+              terms_version: userData.terms_version ?? null,
               created_at: userData.created_at,
               updated_at: userData.updated_at,
             };
@@ -88,6 +96,10 @@ export default function RootLayout() {
               full_name: userData.full_name,
               avatar_url: userData.avatar_url,
               role: userData.role as 'creator' | 'business',
+              onboarding_completed_at: userData.onboarding_completed_at ?? null,
+              email_verified_at: userData.email_verified_at ?? null,
+              accepted_terms_at: userData.accepted_terms_at ?? null,
+              terms_version: userData.terms_version ?? null,
               created_at: userData.created_at,
               updated_at: userData.updated_at,
             };
@@ -108,6 +120,22 @@ export default function RootLayout() {
     };
   }, [setUser, setSession, setAuthLoading, setInitialized]);
 
+  const router = useRouter();
+  const segments = useSegments();
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Onboarding redirect gate
+  useEffect(() => {
+    if (!initialized || !user) return;
+
+    const inAuthGroup = segments[0] === 'auth';
+    const inOnboarding = segments[0] === 'onboarding';
+
+    if (!user.onboarding_completed_at && !inAuthGroup && !inOnboarding) {
+      router.replace(`/onboarding/${user.role}` as any);
+    }
+  }, [initialized, user, segments, router]);
+
   // Fetch data when user is available
   useEffect(() => {
     if (user && initialized) {
@@ -119,9 +147,23 @@ export default function RootLayout() {
 
   if (!initialized) return null;
 
+  const showEmailBanner =
+    user &&
+    !user.email_verified_at &&
+    !bannerDismissed &&
+    new Date(user.created_at).getTime() < Date.now() - 24 * 60 * 60 * 1000;
+
   return (
+    <ErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      {showEmailBanner && (
+        <EmailVerificationBanner
+          colors={colors}
+          onDismiss={() => setBannerDismissed(true)}
+          onVerify={() => router.push('/auth/verify-email' as any)}
+        />
+      )}
       <Stack
         screenOptions={{
           headerShown: false,
@@ -153,5 +195,69 @@ export default function RootLayout() {
         />
       </Stack>
     </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
+
+function EmailVerificationBanner({
+  colors,
+  onDismiss,
+  onVerify,
+}: {
+  colors: typeof Colors.light;
+  onDismiss: () => void;
+  onVerify: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View
+      style={[
+        bannerStyles.container,
+        {
+          backgroundColor: colors.warningLight,
+          borderBottomColor: colors.warning,
+          paddingTop: insets.top + Spacing.sm,
+        },
+      ]}
+    >
+      <View style={bannerStyles.content}>
+        <AlertTriangle size={18} color={colors.warning} strokeWidth={2} />
+        <Pressable onPress={onVerify} style={bannerStyles.textContainer}>
+          <Text style={[bannerStyles.text, { color: colors.text }]}>
+            Verify your email
+          </Text>
+          <Text style={[bannerStyles.subtext, { color: colors.textSecondary }]}>
+            Tap to verify your email address
+          </Text>
+        </Pressable>
+        <Pressable onPress={onDismiss} hitSlop={8}>
+          <X size={18} color={colors.textTertiary} strokeWidth={2} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  container: {
+    borderBottomWidth: 1,
+    paddingBottom: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  textContainer: {
+    flex: 1,
+  },
+  text: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+  },
+  subtext: {
+    ...Typography.caption1,
+  },
+});

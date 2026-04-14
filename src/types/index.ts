@@ -18,6 +18,10 @@ export interface User {
   full_name: string;
   avatar_url: string | null;
   role: UserRole;
+  onboarding_completed_at: string | null;
+  email_verified_at: string | null;
+  accepted_terms_at: string | null;
+  terms_version: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -92,7 +96,7 @@ export interface Listing {
 
 // ─── Booking ─────────────────────────────────────────────────────────────────
 
-export type BookingStatus = 'pending' | 'accepted' | 'active' | 'completed' | 'cancelled';
+export type BookingStatus = 'pending' | 'accepted' | 'active' | 'in_progress' | 'proof_submitted' | 'completed' | 'cancelled';
 
 export interface Booking {
   id: string;
@@ -109,6 +113,11 @@ export interface Booking {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  proof_url: string | null;
+  proof_screenshots: string[] | null;
+  proof_note: string | null;
+  proof_submitted_at: string | null;
+  auto_approve_at: string | null;
 }
 
 // ─── Message ─────────────────────────────────────────────────────────────────
@@ -167,4 +176,72 @@ export interface Session {
   refresh_token: string;
   expires_at: number;
   user: User;
+}
+
+// ─── Notification ────────────────────────────────────────────────────────────
+
+export type NotificationType =
+  | 'booking'
+  | 'message'
+  | 'application'
+  | 'review'
+  | 'payment'
+  | 'system';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  read: boolean;
+  created_at: string;
+}
+
+// ─── Payment Method ──────────────────────────────────────────────────────────
+
+export interface PaymentMethod {
+  id: string;
+  user_id: string;
+  stripe_payment_method_id: string;
+  brand: string;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  is_default: boolean;
+  created_at: string;
+}
+
+// ─── Transaction ─────────────────────────────────────────────────────────────
+
+export type TransactionKind = 'payment' | 'payout' | 'platform_fee' | 'refund';
+export type TransactionStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
+
+export interface Transaction {
+  id: string;
+  booking_id: string | null;
+  payer_id: string | null;
+  payee_id: string | null;
+  kind: TransactionKind;
+  amount_cents: number;
+  currency: string;
+  status: TransactionStatus;
+  stripe_payment_intent_id: string | null;
+  description: string;
+  created_at: string;
+}
+
+// ─── Application ─────────────────────────────────────────────────────────────
+
+export type ApplicationStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface Application {
+  id: string;
+  listing_id: string;
+  creator_id: string;
+  message: string;
+  status: ApplicationStatus;
+  created_at: string;
+  updated_at: string;
 }

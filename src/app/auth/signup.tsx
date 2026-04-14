@@ -12,12 +12,13 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ArrowLeft, Mail, Lock, User, ArrowRight } from 'lucide-react-native';
+import { Mail, Lock, User, ArrowRight, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { Typography, Spacing } from '../../constants/theme';
 
 export default function SignupScreen() {
@@ -30,6 +31,7 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const handleSignup = useCallback(() => {
     if (!fullName.trim() || !email.trim() || !password.trim()) {
@@ -47,6 +49,11 @@ export default function SignupScreen() {
       return;
     }
 
+    if (!termsAccepted) {
+      Alert.alert('Error', 'You must accept the Terms of Service and confirm you are 18+.');
+      return;
+    }
+
     setLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -60,7 +67,7 @@ export default function SignupScreen() {
         password,
       },
     });
-  }, [router, fullName, email, password, confirmPassword]);
+  }, [router, fullName, email, password, confirmPassword, termsAccepted]);
 
   const handleBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -72,17 +79,14 @@ export default function SignupScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <ScreenHeader title="Create Account" onBack={handleBack} />
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 },
+          { paddingTop: Spacing.xl, paddingBottom: insets.bottom + 20 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Pressable onPress={handleBack} style={styles.backButton}>
-          <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
-        </Pressable>
-
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
           <Text style={[styles.title, { color: colors.text }]}>
             Create Account
@@ -130,10 +134,38 @@ export default function SignupScreen() {
             icon={<Lock size={20} color={colors.textTertiary} strokeWidth={2} />}
           />
 
+          <Pressable
+            style={styles.termsRow}
+            onPress={() => setTermsAccepted((v) => !v)}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: termsAccepted ? colors.primary : colors.border,
+                  backgroundColor: termsAccepted ? colors.primary : 'transparent',
+                },
+              ]}
+            >
+              {termsAccepted && <Check size={14} color={colors.onPrimary} strokeWidth={3} />}
+            </View>
+            <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+              I am 18+ and agree to the{' '}
+              <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                Terms of Service
+              </Text>{' '}
+              and{' '}
+              <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                Privacy Policy
+              </Text>
+            </Text>
+          </Pressable>
+
           <Button
             title="Continue"
             onPress={handleSignup}
             loading={loading}
+            disabled={!termsAccepted}
             size="lg"
             fullWidth
             icon={<ArrowRight size={20} color={colors.onPrimary} strokeWidth={2} />}
@@ -162,12 +194,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.xxl,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    marginBottom: Spacing.xl,
-  },
   title: {
     ...Typography.largeTitle,
   },
@@ -178,6 +204,27 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: Spacing.xs,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  termsText: {
+    ...Typography.subheadline,
+    flex: 1,
+    lineHeight: 20,
   },
   bottomRow: {
     flexDirection: 'row',
