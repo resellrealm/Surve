@@ -1,14 +1,15 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
+import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowRight, Check } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../../hooks/useTheme';
+import { useHaptics } from '../../../hooks/useHaptics';
 import { useStore } from '../../../lib/store';
 import { Button } from '../../../components/ui/Button';
 import { ScreenHeader } from '../../../components/ui/ScreenHeader';
+import { PressableScale } from '../../../components/ui/PressableScale';
 import { ProgressBar } from '../../../components/onboarding/ProgressBar';
 import { Typography, Spacing, BorderRadius } from '../../../constants/theme';
 import type { Category } from '../../../types';
@@ -26,13 +27,14 @@ const CATEGORIES: { key: Category; label: string; emoji: string }[] = [
 
 export default function CreatorCategoriesScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { creatorDraft, updateCreatorDraft } = useStore();
 
   const toggle = useCallback(
     (cat: Category) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      haptics.tap();
       const current = creatorDraft.categories;
       const next = current.includes(cat)
         ? current.filter((c) => c !== cat)
@@ -43,7 +45,7 @@ export default function CreatorCategoriesScreen() {
   );
 
   const handleNext = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
     router.push('/onboarding/creator/portfolio');
   }, [router]);
 
@@ -57,7 +59,7 @@ export default function CreatorCategoriesScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text style={[styles.title, { color: colors.text }]}>What interests you?</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>What interests you?</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Pick the types of businesses you'd like to work with
           </Text>
@@ -71,7 +73,7 @@ export default function CreatorCategoriesScreen() {
                 key={cat.key}
                 entering={FadeInDown.duration(400).delay(150 + i * 80)}
               >
-                <Pressable
+                <PressableScale
                   onPress={() => toggle(cat.key)}
                   style={[
                     styles.chip,
@@ -80,6 +82,10 @@ export default function CreatorCategoriesScreen() {
                       borderColor: selected ? colors.primary : colors.border,
                     },
                   ]}
+                  scaleValue={0.94}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={cat.label}
+                  accessibilityState={{ checked: selected }}
                 >
                   <Text style={styles.emoji}>{cat.emoji}</Text>
                   <Text
@@ -91,7 +97,7 @@ export default function CreatorCategoriesScreen() {
                     {cat.label}
                   </Text>
                   {selected && <Check size={16} color={colors.onPrimary} strokeWidth={3} />}
-                </Pressable>
+                </PressableScale>
               </Animated.View>
             );
           })}

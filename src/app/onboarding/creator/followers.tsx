@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { TrendingUp, ArrowRight } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../../hooks/useTheme';
+import { useHaptics } from '../../../hooks/useHaptics';
 import { useStore } from '../../../lib/store';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
@@ -17,12 +17,13 @@ const TOTAL_STEPS = 7;
 
 export default function CreatorFollowersScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { creatorDraft, updateCreatorDraft } = useStore();
 
   const handleNext = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
     router.push('/onboarding/creator/categories');
   }, [router]);
 
@@ -37,7 +38,7 @@ export default function CreatorFollowersScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text style={[styles.title, { color: colors.text }]}>Your audience</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Your audience</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Approximate numbers are fine — businesses use these to match with creators
           </Text>

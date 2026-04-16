@@ -1,13 +1,23 @@
-import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  Linking,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowRight, CreditCard, Shield, DollarSign } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { getStripeConnectLink } from '../../../lib/api';
+import { useHaptics } from '../../../hooks/useHaptics';
+import { toast } from '../../../lib/toast';
 import { useTheme } from '../../../hooks/useTheme';
 import { Button } from '../../../components/ui/Button';
 import { ScreenHeader } from '../../../components/ui/ScreenHeader';
+import { PressableScale } from '../../../components/ui/PressableScale';
 import { ProgressBar } from '../../../components/onboarding/ProgressBar';
 import { Typography, Spacing, BorderRadius } from '../../../constants/theme';
 
@@ -33,17 +43,34 @@ const BENEFITS = [
 
 export default function CreatorStripeConnectScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const handleSetupStripe = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // TODO: Launch Stripe Connect onboarding flow when credentials are configured
-    router.push('/onboarding/creator/review' as any);
+  const [busy, setBusy] = useState(false);
+
+  const handleSetupStripe = useCallback(async () => {
+    haptics.confirm();
+    setBusy(true);
+    const url = await getStripeConnectLink();
+    setBusy(false);
+    if (!url) {
+      toast.error("Stripe unavailable: We couldn't start Stripe onboarding right now. You can skip this step and set up payouts later from your profile.");
+      return;
+    }
+    try {
+      await Linking.openURL(url);
+      // When the user returns, they continue on review. In production, the
+      // create-connect-link edge function sets a `return_url` that brings them
+      // back into the app via deep link.
+      router.push('/onboarding/creator/review' as any);
+    } catch {
+      toast.error('Could not open Stripe. Try again in a moment.');
+    }
   }, [router]);
 
   const handleSkip = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     router.push('/onboarding/creator/review' as any);
   }, [router]);
 
@@ -57,7 +84,7 @@ export default function CreatorStripeConnectScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text style={[styles.title, { color: colors.text }]}>Set up payouts</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Set up payouts</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Connect your Stripe account to receive payments for your work
           </Text>
@@ -91,9 +118,9 @@ export default function CreatorStripeConnectScreen() {
           fullWidth
           icon={<ArrowRight size={20} color={colors.onPrimary} strokeWidth={2} />}
         />
-        <Pressable onPress={handleSkip} style={styles.skipWrap}>
+        <PressableScale onPress={handleSkip} style={styles.skipWrap} scaleValue={0.95} accessibilityRole="button" accessibilityLabel="Set up later" accessibilityHint="Double tap to skip Stripe setup and continue">
           <Text style={[styles.skipText, { color: colors.textSecondary }]}>Set up later</Text>
-        </Pressable>
+        </PressableScale>
       </View>
     </View>
   );

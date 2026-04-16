@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Instagram, ArrowRight } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../../hooks/useTheme';
+import { useHaptics } from '../../../hooks/useHaptics';
 import { useStore } from '../../../lib/store';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
@@ -17,6 +17,7 @@ const TOTAL_STEPS = 7;
 
 export default function CreatorSocialsScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { creatorDraft, updateCreatorDraft } = useStore();
@@ -33,7 +34,7 @@ export default function CreatorSocialsScreen() {
 
   const handleNext = useCallback(() => {
     if (!validate()) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
     router.push('/onboarding/creator/followers');
   }, [validate, router]);
 
@@ -48,7 +49,7 @@ export default function CreatorSocialsScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text style={[styles.title, { color: colors.text }]}>Your social accounts</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Your social accounts</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Add at least one handle so businesses can see your work
           </Text>

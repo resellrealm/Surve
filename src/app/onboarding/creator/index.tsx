@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { User, MapPin, ArrowRight } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../../hooks/useTheme';
+import { useHaptics } from '../../../hooks/useHaptics';
 import { useStore } from '../../../lib/store';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
@@ -18,6 +18,7 @@ const BIO_MAX = 160;
 
 export default function CreatorBasicInfoScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { creatorDraft, updateCreatorDraft } = useStore();
@@ -34,7 +35,7 @@ export default function CreatorBasicInfoScreen() {
 
   const handleNext = useCallback(() => {
     if (!validate()) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
     router.push('/onboarding/creator/socials');
   }, [validate, router]);
 
@@ -49,7 +50,7 @@ export default function CreatorBasicInfoScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text style={[styles.title, { color: colors.text }]}>Tell us about yourself</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Tell us about yourself</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             This helps businesses find and connect with you
           </Text>
@@ -68,13 +69,15 @@ export default function CreatorBasicInfoScreen() {
 
         <Animated.View entering={FadeInDown.duration(600).delay(300)}>
           <Input
-            label={`Bio (${creatorDraft.bio.length}/${BIO_MAX})`}
+            label="Bio"
             placeholder="Tell businesses what you do"
             value={creatorDraft.bio}
             onChangeText={(t) => updateCreatorDraft({ bio: t.slice(0, BIO_MAX) })}
             error={errors.bio}
             multiline
             numberOfLines={3}
+            maxLength={BIO_MAX}
+            showCharCount
           />
         </Animated.View>
 

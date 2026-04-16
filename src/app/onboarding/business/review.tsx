@@ -16,14 +16,14 @@ import { AdaptiveImage } from '../../../components/ui/AdaptiveImage';
 import * as api from '../../../lib/api';
 import { Typography, Spacing, BorderRadius } from '../../../constants/theme';
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 5;
 
-export default function CreatorReviewScreen() {
+export default function BusinessReviewScreen() {
   const { colors } = useTheme();
   const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { creatorDraft, user, clearCreatorDraft, setUser } = useStore();
+  const { businessDraft, user, clearBusinessDraft } = useStore();
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = useCallback(async () => {
@@ -31,28 +31,21 @@ export default function CreatorReviewScreen() {
     haptics.success();
     setSubmitting(true);
     try {
-      await api.updateCreatorProfile(user.id, {
-        bio: creatorDraft.bio,
-        instagram_handle: creatorDraft.instagram_handle || null,
-        tiktok_handle: creatorDraft.tiktok_handle || null,
-        instagram_followers: Number(creatorDraft.instagram_followers) || 0,
-        tiktok_followers: Number(creatorDraft.tiktok_followers) || 0,
-        engagement_rate: Number(creatorDraft.engagement_rate) || 0,
-        avg_views: Number(creatorDraft.avg_views) || 0,
-        categories: creatorDraft.categories,
-        portfolio_urls: creatorDraft.portfolio_uris,
-        location: creatorDraft.location,
+      await api.updateBusinessProfile(user.id, {
+        business_name: businessDraft.business_name,
+        category: businessDraft.category as any,
+        description: businessDraft.description,
+        location: businessDraft.location,
+        website: businessDraft.website || null,
       } as any);
-      await api.completeOnboarding(user.id);
-      setUser({ ...user, onboarding_completed_at: new Date().toISOString() });
-      clearCreatorDraft();
+      clearBusinessDraft();
       router.replace('/(tabs)' as any);
     } catch {
       toast.error('Failed to save profile. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }, [user, submitting, creatorDraft, clearCreatorDraft, router]);
+  }, [user, submitting, businessDraft, clearBusinessDraft, router]);
 
   const editStep = useCallback(
     (path: string) => {
@@ -62,70 +55,82 @@ export default function CreatorReviewScreen() {
     [router],
   );
 
+  const openHours = Object.entries(businessDraft.hours)
+    .filter(([, v]) => !v.closed)
+    .map(([day, v]) => `${day}: ${v.open}–${v.close}`)
+    .join(', ');
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Review" />
-      <ProgressBar currentStep={7} totalSteps={TOTAL_STEPS} />
+      <ProgressBar currentStep={5} totalSteps={TOTAL_STEPS} />
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Looking good!</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Almost there!</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Review your info and tap Submit when ready
+            Review your business details and submit
           </Text>
         </Animated.View>
 
         <ReviewRow
-          label="Name"
-          value={creatorDraft.full_name}
-          onEdit={() => editStep('/onboarding/creator')}
+          label="Business Name"
+          value={businessDraft.business_name}
+          onEdit={() => editStep('/onboarding/business')}
         />
         <ReviewRow
-          label="Bio"
-          value={creatorDraft.bio || '—'}
-          onEdit={() => editStep('/onboarding/creator')}
+          label="Category"
+          value={businessDraft.category || '—'}
+          onEdit={() => editStep('/onboarding/business')}
         />
         <ReviewRow
-          label="Location"
-          value={creatorDraft.location}
-          onEdit={() => editStep('/onboarding/creator')}
+          label="Address"
+          value={businessDraft.location}
+          onEdit={() => editStep('/onboarding/business')}
         />
         <ReviewRow
-          label="Instagram"
-          value={creatorDraft.instagram_handle ? `@${creatorDraft.instagram_handle}` : '—'}
-          onEdit={() => editStep('/onboarding/creator/socials')}
+          label="Hours"
+          value={openHours || 'Not set'}
+          onEdit={() => editStep('/onboarding/business/hours')}
         />
         <ReviewRow
-          label="TikTok"
-          value={creatorDraft.tiktok_handle ? `@${creatorDraft.tiktok_handle}` : '—'}
-          onEdit={() => editStep('/onboarding/creator/socials')}
+          label="Description"
+          value={businessDraft.description || '—'}
+          onEdit={() => editStep('/onboarding/business/details')}
         />
         <ReviewRow
-          label="Categories"
-          value={creatorDraft.categories.join(', ') || '—'}
-          onEdit={() => editStep('/onboarding/creator/categories')}
+          label="Website"
+          value={businessDraft.website || '—'}
+          onEdit={() => editStep('/onboarding/business/details')}
         />
 
-        {creatorDraft.portfolio_uris.length > 0 && (
-          <View style={styles.portfolioSection}>
+        {(businessDraft.coverPhotoUri || businessDraft.galleryUris.length > 0) && (
+          <View style={styles.photosSection}>
             <View style={styles.rowHeader}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>Portfolio</Text>
-              <PressableScale onPress={() => editStep('/onboarding/creator/portfolio')} scaleValue={0.88} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit portfolio" accessibilityHint="Double tap to edit portfolio images">
+              <Text style={[styles.label, { color: colors.textSecondary }]}>Photos</Text>
+              <PressableScale onPress={() => editStep('/onboarding/business/photos')} scaleValue={0.88} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit photos">
                 <Edit3 size={16} color={colors.primary} strokeWidth={2} />
               </PressableScale>
             </View>
             <View style={styles.thumbs}>
-              {creatorDraft.portfolio_uris.map((uri) => (
+              {businessDraft.coverPhotoUri ? (
+                <AdaptiveImage
+                  source={{ uri: businessDraft.coverPhotoUri }}
+                  style={[styles.thumb, { borderColor: colors.border }]}
+                  contentFit="cover"
+                  accessibilityLabel="Cover photo"
+                />
+              ) : null}
+              {businessDraft.galleryUris.map((uri, i) => (
                 <AdaptiveImage
                   key={uri}
                   source={{ uri }}
                   style={[styles.thumb, { borderColor: colors.border }]}
                   contentFit="cover"
-                  accessibilityRole="image"
-                  accessibilityLabel="Portfolio image"
+                  accessibilityLabel={`Gallery photo ${i + 1}`}
                 />
               ))}
             </View>
@@ -166,7 +171,7 @@ function ReviewRow({
           {value}
         </Text>
       </View>
-      <PressableScale onPress={onEdit} hitSlop={8} scaleValue={0.88} accessibilityRole="button" accessibilityLabel={`Edit ${label}`} accessibilityHint="Double tap to edit this field">
+      <PressableScale onPress={onEdit} hitSlop={8} scaleValue={0.88} accessibilityRole="button" accessibilityLabel={`Edit ${label}`}>
         <Edit3 size={16} color={colors.primary} strokeWidth={2} />
       </PressableScale>
     </View>
@@ -193,8 +198,8 @@ const styles = StyleSheet.create({
   },
   label: { ...Typography.caption1, textTransform: 'uppercase', letterSpacing: 1 },
   value: { ...Typography.body, marginTop: Spacing.xxs },
-  portfolioSection: { marginTop: Spacing.lg },
-  thumbs: { flexDirection: 'row', gap: Spacing.sm },
+  photosSection: { marginTop: Spacing.lg },
+  thumbs: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' },
   thumb: { width: 64, height: 64, borderRadius: BorderRadius.sm, borderWidth: 1 },
   footer: { paddingHorizontal: Spacing.xxl, paddingTop: Spacing.lg },
 });

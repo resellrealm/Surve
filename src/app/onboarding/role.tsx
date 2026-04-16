@@ -1,15 +1,11 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
+import { StyleSheet, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Camera, Store, Users } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { PressableScale } from '../../components/ui/PressableScale';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import {
@@ -17,7 +13,6 @@ import {
   Spacing,
   BorderRadius,
   Shadows,
-  Springs,
   Colors,
 } from '../../constants/theme';
 
@@ -29,7 +24,7 @@ export default function RoleScreen() {
 
   const handleSelect = useCallback(
     (role: 'creator' | 'business' | 'both') => {
-      haptics.medium();
+      haptics.confirm();
       if (role === 'both' || role === 'creator') {
         router.push('/onboarding/creator' as any);
       } else {
@@ -89,80 +84,59 @@ function RoleCard({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
 
   return (
-    <Animated.View style={[styles.cardOuter, animStyle]}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => {
-          scale.value = withSpring(0.96, Springs.snappy);
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, Springs.bouncy);
-        }}
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
-          Shadows.md,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={label}
+    <PressableScale
+      scaleValue={0.96}
+      onPress={onPress}
+      style={[
+        styles.cardOuter,
+        styles.card,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+        },
+        Shadows.md,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${description}`}
+      accessibilityHint="Double tap to select this role"
+    >
+      <LinearGradient
+        colors={gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.iconCircle}
       >
-        <LinearGradient
-          colors={gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.iconCircle}
-        >
-          <Icon size={28} color="#FFFFFF" strokeWidth={2} />
-        </LinearGradient>
-        <Text style={[styles.cardLabel, { color: colors.text }]}>{label}</Text>
-        <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>
-          {description}
-        </Text>
-      </Pressable>
-    </Animated.View>
+        <Icon size={28} color="#FFFFFF" strokeWidth={2} />
+      </LinearGradient>
+      <Text style={[styles.cardLabel, { color: colors.text }]}>{label}</Text>
+      <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>
+        {description}
+      </Text>
+    </PressableScale>
   );
 }
 
 function BothOption({ onPress }: { onPress: () => void }) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
 
   return (
-    <Animated.View style={animStyle}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => {
-          scale.value = withSpring(0.97, Springs.snappy);
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, Springs.bouncy);
-        }}
-        style={[
-          styles.bothButton,
-          { borderColor: colors.border },
-        ]}
-        accessibilityRole="button"
-      >
-        <Users size={20} color={colors.primary} strokeWidth={2} />
-        <Text style={[styles.bothText, { color: colors.primary }]}>
-          I want to do both
-        </Text>
-      </Pressable>
-    </Animated.View>
+    <PressableScale
+      onPress={onPress}
+      style={[
+        styles.bothButton,
+        { borderColor: colors.border },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="I want to do both"
+      accessibilityHint="Double tap to set up as both creator and business"
+    >
+      <Users size={20} color={colors.primary} strokeWidth={2} />
+      <Text style={[styles.bothText, { color: colors.primary }]}>
+        I want to do both
+      </Text>
+    </PressableScale>
   );
 }
 
