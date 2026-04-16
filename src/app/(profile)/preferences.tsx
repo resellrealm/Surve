@@ -20,6 +20,7 @@ import {
   Megaphone,
   Mail,
   Volume2,
+  Eye,
 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
@@ -29,6 +30,7 @@ import {
   DEFAULT_NOTIFICATION_PREFS,
   getNotificationPrefs,
   setNotificationPrefs as saveNotificationPrefs,
+  setShowReviewsPublicly,
   type NotificationPrefs,
 } from '../../lib/api';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
@@ -125,16 +127,31 @@ export default function PreferencesScreen() {
   const { playChime } = useChime();
   const user = useStore((s) => s.user);
 
+  const setUser = useStore((s) => s.setUser);
+
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
   const [loaded, setLoaded] = useState(false);
+  const [showReviews, setShowReviews] = useState(user?.show_reviews_publicly ?? true);
 
   useEffect(() => {
     if (!user) return;
+    setShowReviews(user.show_reviews_publicly ?? true);
     getNotificationPrefs(user.id).then((p) => {
       setPrefs(p);
       setLoaded(true);
     });
   }, [user]);
+
+  const handleToggleShowReviews = useCallback(
+    async (val: boolean) => {
+      if (!user) return;
+      haptics.select();
+      setShowReviews(val);
+      setUser({ ...user, show_reviews_publicly: val });
+      await setShowReviewsPublicly(user.id, val);
+    },
+    [user, haptics, setUser]
+  );
 
   const toggle = useCallback(
     async (key: keyof NotificationPrefs) => {
@@ -246,6 +263,39 @@ export default function PreferencesScreen() {
                 accessibilityRole="switch"
                 accessibilityLabel="UI sounds: Soft chime on bookings, payouts & notifications"
                 accessibilityState={{ checked: soundEnabled }}
+              />
+            </View>
+          </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.duration(400).delay(70)}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
+            PRIVACY
+          </Text>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.surface, borderColor: colors.borderLight },
+            ]}
+          >
+            <View style={styles.row}>
+              <View style={[styles.rowIcon, { backgroundColor: colors.surfaceSecondary }]}>
+                <Eye size={18} color={colors.text} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>Show reviews on public profile</Text>
+                <Text style={[styles.rowSubLabel, { color: colors.textTertiary }]}>
+                  When off, visitors won't see your Reviews section
+                </Text>
+              </View>
+              <Switch
+                value={showReviews}
+                onValueChange={handleToggleShowReviews}
+                trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
+                thumbColor="#fff"
+                accessibilityRole="switch"
+                accessibilityLabel="Show reviews on public profile"
+                accessibilityState={{ checked: showReviews }}
               />
             </View>
           </View>

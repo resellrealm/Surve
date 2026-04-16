@@ -119,6 +119,10 @@ interface FormState {
   portfolioPhotos: string[];
   ratesVisible: boolean;
   baseRate: string;
+  hourlyRate: string;
+  dayRate: string;
+  minEngagement: string;
+  availableNow: boolean;
   travelWillingness: string;
 }
 
@@ -138,6 +142,10 @@ const INITIAL_FORM: FormState = {
   portfolioPhotos: [],
   ratesVisible: true,
   baseRate: '',
+  hourlyRate: '',
+  dayRate: '',
+  minEngagement: '',
+  availableNow: true,
   travelWillingness: 'local',
 };
 
@@ -910,6 +918,60 @@ interface Step5Props {
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
 }
 
+function RateField({
+  label,
+  value,
+  onChange,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  suffix?: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.fieldGroup}>
+      <ThemedText
+        variant="footnote"
+        style={[styles.label, { color: colors.textSecondary }]}
+      >
+        {label}
+      </ThemedText>
+      <View
+        style={[
+          styles.rateInputWrap,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <ThemedText
+          variant="body"
+          style={[styles.currencySymbol, { color: colors.textSecondary }]}
+        >
+          $
+        </ThemedText>
+        <TextInput
+          style={[styles.rateInput, { color: colors.text }]}
+          placeholder="0"
+          placeholderTextColor={colors.textTertiary}
+          value={value}
+          onChangeText={(v) => onChange(v.replace(/[^0-9.]/g, ''))}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+        />
+        {suffix && (
+          <ThemedText
+            variant="footnote"
+            style={{ color: colors.textSecondary, marginLeft: Spacing.xs }}
+          >
+            {suffix}
+          </ThemedText>
+        )}
+      </View>
+    </View>
+  );
+}
+
 function Step5Rates({ form, setForm }: Step5Props) {
   const { colors } = useTheme();
   const haptics = useHaptics();
@@ -918,6 +980,14 @@ function Step5Rates({ form, setForm }: Step5Props) {
     (val: boolean) => {
       haptics.select();
       setForm((f) => ({ ...f, ratesVisible: val }));
+    },
+    [haptics, setForm],
+  );
+
+  const toggleAvailable = useCallback(
+    (val: boolean) => {
+      haptics.select();
+      setForm((f) => ({ ...f, availableNow: val }));
     },
     [haptics, setForm],
   );
@@ -947,14 +1017,108 @@ function Step5Rates({ form, setForm }: Step5Props) {
         {STEP_META[4].subtitle}
       </ThemedText>
 
+      {/* Availability toggle */}
+      <View
+        style={[
+          styles.toggleRow,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          Shadows.sm,
+        ]}
+      >
+        <View style={styles.toggleInfo}>
+          <ThemedText variant="headline" style={{ color: colors.text }}>
+            Available for bookings
+          </ThemedText>
+          <ThemedText
+            variant="footnote"
+            style={{ color: colors.textSecondary, marginTop: 2 }}
+          >
+            Turn off when you're fully booked
+          </ThemedText>
+        </View>
+        <Switch
+          value={form.availableNow}
+          onValueChange={toggleAvailable}
+          trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
+          thumbColor={colors.surface}
+          accessibilityLabel="Toggle booking availability"
+        />
+      </View>
+
+      {/* Rates section */}
+      <ThemedText
+        variant="footnote"
+        style={[styles.sectionLabel, { color: colors.textTertiary }]}
+      >
+        RATES (USD)
+      </ThemedText>
+
+      <RateField
+        label="PER POST / REEL"
+        value={form.baseRate}
+        onChange={(v) => setForm((f) => ({ ...f, baseRate: v }))}
+        suffix="/ post"
+      />
+
+      <RateField
+        label="HOURLY RATE"
+        value={form.hourlyRate}
+        onChange={(v) => setForm((f) => ({ ...f, hourlyRate: v }))}
+        suffix="/ hr"
+      />
+
+      <RateField
+        label="FULL DAY RATE"
+        value={form.dayRate}
+        onChange={(v) => setForm((f) => ({ ...f, dayRate: v }))}
+        suffix="/ day"
+      />
+
+      {/* Min engagement */}
+      <View style={styles.fieldGroup}>
+        <ThemedText
+          variant="footnote"
+          style={[styles.label, { color: colors.textSecondary }]}
+        >
+          MIN. ENGAGEMENT RATE
+        </ThemedText>
+        <View
+          style={[
+            styles.rateInputWrap,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <TextInput
+            style={[styles.rateInput, { color: colors.text }]}
+            placeholder="e.g. 3"
+            placeholderTextColor={colors.textTertiary}
+            value={form.minEngagement}
+            onChangeText={(v) =>
+              setForm((f) => ({ ...f, minEngagement: v.replace(/[^0-9.]/g, '') }))
+            }
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+          />
+          <ThemedText
+            variant="body"
+            style={{ color: colors.textSecondary, marginLeft: Spacing.xs }}
+          >
+            %
+          </ThemedText>
+        </View>
+        <ThemedText
+          variant="caption1"
+          style={{ color: colors.textTertiary, marginTop: Spacing.xs }}
+        >
+          Listings below this engagement won't appear in your feed
+        </ThemedText>
+      </View>
+
       {/* Visible toggle */}
       <View
         style={[
           styles.toggleRow,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
+          { backgroundColor: colors.surface, borderColor: colors.border },
           Shadows.sm,
         ]}
       >
@@ -966,57 +1130,16 @@ function Step5Rates({ form, setForm }: Step5Props) {
             variant="footnote"
             style={{ color: colors.textSecondary, marginTop: 2 }}
           >
-            Businesses can see your rate on your profile
+            Businesses can see your rates on your profile
           </ThemedText>
         </View>
         <Switch
           value={form.ratesVisible}
           onValueChange={toggleVisible}
-          trackColor={{
-            false: colors.surfaceSecondary,
-            true: colors.primary,
-          }}
+          trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
           thumbColor={colors.surface}
           accessibilityLabel="Toggle public rates visibility"
         />
-      </View>
-
-      {/* Base rate */}
-      <View style={styles.fieldGroup}>
-        <ThemedText
-          variant="footnote"
-          style={[styles.label, { color: colors.textSecondary }]}
-        >
-          BASE RATE (USD / POST)
-        </ThemedText>
-        <View
-          style={[
-            styles.rateInputWrap,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <ThemedText
-            variant="body"
-            style={[styles.currencySymbol, { color: colors.textSecondary }]}
-          >
-            $
-          </ThemedText>
-          <TextInput
-            style={[styles.rateInput, { color: colors.text }]}
-            placeholder="0"
-            placeholderTextColor={colors.textTertiary}
-            value={form.baseRate}
-            onChangeText={(v) => {
-              const numeric = v.replace(/[^0-9.]/g, '');
-              setForm((f) => ({ ...f, baseRate: numeric }));
-            }}
-            keyboardType="decimal-pad"
-            returnKeyType="done"
-          />
-        </View>
       </View>
 
       {/* Travel willingness */}
@@ -1038,9 +1161,7 @@ function Step5Rates({ form, setForm }: Step5Props) {
                 style={[
                   styles.travelChip,
                   {
-                    backgroundColor: selected
-                      ? colors.primary
-                      : colors.surface,
+                    backgroundColor: selected ? colors.primary : colors.surface,
                     borderColor: selected ? colors.primary : colors.border,
                   },
                   Shadows.sm,
@@ -1516,6 +1637,12 @@ const styles = StyleSheet.create({
   },
 
   // Rates
+  sectionLabel: {
+    letterSpacing: 0.5,
+    fontWeight: '600',
+    marginBottom: Spacing.md,
+    marginTop: Spacing.xs,
+  },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',

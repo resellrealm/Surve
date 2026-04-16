@@ -6,21 +6,15 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Switch,
   Dimensions,
   Image,
+  PanResponder,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
-  FadeOutUp,
-  FadeIn,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
   useReducedMotion,
 } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
@@ -68,6 +62,19 @@ import { Typography, Spacing, BorderRadius, Shadows, Springs } from '../../const
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// ─── Motion Context ───────────────────────────────────────────────────────────
+
+const ReducedMotionCtx = React.createContext(false);
+
+function StepEnter({ children }: { children: React.ReactNode }) {
+  const rm = React.useContext(ReducedMotionCtx);
+  return (
+    <Animated.View entering={rm ? undefined : FadeInDown.duration(350).springify()}>
+      {children}
+    </Animated.View>
+  );
+}
+
 // ─── Listing Types ────────────────────────────────────────────────────────────
 
 const LISTING_TYPES = [
@@ -104,6 +111,7 @@ const DURATION_TYPES = [
 
 const FOLLOWER_PRESETS = [0, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
 const ENGAGEMENT_PRESETS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15];
+const THUMB_RADIUS = 12;
 
 function formatFollowers(n: number): string {
   if (n === 0) return 'Any';
@@ -357,6 +365,122 @@ function PresetStepper({
   );
 }
 
+// ─── Slider Preset ────────────────────────────────────────────────────────────
+
+function SliderPreset({
+  label,
+  presets,
+  value,
+  onChange,
+  formatValue,
+}: {
+  label: string;
+  presets: number[];
+  value: number;
+  onChange: (v: number) => void;
+  formatValue: (n: number) => string;
+}) {
+  const { colors } = useTheme();
+  const haptics = useHaptics();
+  const [trackWidth, setTrackWidth] = useState(0);
+  const trackWidthRef = useRef(0);
+  const grantLocX = useRef(0);
+  const grantPageX = useRef(0);
+  const lastIdxRef = useRef(-1);
+
+  const idx = Math.max(0, presets.indexOf(value));
+  const fillRatio = presets.length > 1 ? idx / (presets.length - 1) : 0;
+  const usable = Math.max(0, trackWidth - THUMB_RADIUS * 2);
+  const thumbLeft = fillRatio * usable;
+  const fillWidth = thumbLeft + THUMB_RADIUS;
+
+  // Stable refs for PanResponder closures
+  const applyRef = useRef<(i: number) => void>(() => {});
+  const getIdxRef = useRef<(x: number) => number>(() => 0);
+
+  applyRef.current = (i: number) => {
+    const clamped = Math.max(0, Math.min(i, presets.length - 1));
+    if (clamped !== lastIdxRef.current) {
+      lastIdxRef.current = clamped;
+      haptics.tap();
+      onChange(presets[clamped]);
+    }
+  };
+
+  getIdxRef.current = (x: number) => {
+    const w = trackWidthRef.current;
+    if (w === 0) return 0;
+    const ratio = Math.max(0, Math.min(1, (x - THUMB_RADIUS) / Math.max(1, w - THUMB_RADIUS * 2)));
+    return Math.round(ratio * (presets.length - 1));
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onShouldBlockNativeResponder: () => false,
+      onPanResponderGrant: (e, gs) => {
+        grantLocX.current = e.nativeEvent.locationX;
+        grantPageX.current = gs.x0;
+        lastIdxRef.current = -1;
+        applyRef.current(getIdxRef.current(grantLocX.current));
+      },
+      onPanResponderMove: (_e, gs) => {
+        const loc = grantLocX.current + (gs.moveX - grantPageX.current);
+        applyRef.current(getIdxRef.current(loc));
+      },
+    }),
+  ).current;
+
+  return (
+    <View style={styles.sliderWrapper}>
+      <View style={styles.sliderHeader}>
+        <Text style={[styles.sliderLabel, { color: colors.text }]}>{label}</Text>
+        <View style={[styles.sliderPill, { backgroundColor: colors.activeLight }]}>
+          <Text style={[styles.sliderPillText, { color: colors.primary }]}>{formatValue(value)}</Text>
+        </View>
+      </View>
+      <View
+        style={styles.sliderTrackArea}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          trackWidthRef.current = w;
+          setTrackWidth(w);
+        }}
+        {...panResponder.panHandlers}
+        accessibilityRole="adjustable"
+        accessibilityLabel={label}
+        accessibilityValue={{ text: formatValue(value) }}
+      >
+        <View style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
+          {trackWidth > 0 && (
+            <View
+              style={[styles.sliderFill, { width: fillWidth, backgroundColor: colors.primary }]}
+            />
+          )}
+        </View>
+        {trackWidth > 0 && (
+          <View
+            style={[
+              styles.sliderThumb,
+              {
+                left: thumbLeft,
+                backgroundColor: colors.primary,
+                borderColor: colors.surface,
+              },
+            ]}
+            pointerEvents="none"
+          />
+        )}
+      </View>
+      <View style={styles.sliderEnds}>
+        <Text style={[styles.sliderEndText, { color: colors.textTertiary }]}>{formatValue(presets[0])}</Text>
+        <Text style={[styles.sliderEndText, { color: colors.textTertiary }]}>{formatValue(presets[presets.length - 1])}</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── Step 0: Listing Type ────────────────────────────────────────────────────
 
 function Step0_ListingType({
@@ -370,7 +494,7 @@ function Step0_ListingType({
   const haptics = useHaptics();
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <Text style={[styles.stepHeading, { color: colors.text }]}>
         What type of venue or experience are you listing?
       </Text>
@@ -423,7 +547,7 @@ function Step0_ListingType({
           );
         })}
       </View>
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -437,7 +561,7 @@ function Step1_Details({
   onChange: (updates: Partial<WizardData>) => void;
 }) {
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <Input
         label="Listing Title"
         value={data.title}
@@ -467,7 +591,7 @@ function Step1_Details({
         maxLength={400}
         showCharCount
       />
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -522,7 +646,7 @@ function Step2_Photos({
   const photoSize = (SCREEN_WIDTH - Spacing.lg * 2 - Spacing.sm * 2) / 3;
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <Text style={[styles.stepHint, { color: colors.textSecondary }]}>
         Add 3–10 photos. Tap a photo to select it, then tap another to swap positions.
       </Text>
@@ -602,7 +726,7 @@ function Step2_Photos({
           {data.photos.length}/10 photos {data.photos.length < 3 ? `(need ${3 - data.photos.length} more)` : '✓'}
         </Text>
       </View>
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -633,7 +757,7 @@ function Step3_Compensation({
   ];
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <SectionTitle label="Compensation Type" />
       <View style={styles.compTypeRow}>
         {types.map(({ key, label, desc, Icon }) => {
@@ -706,7 +830,7 @@ function Step3_Compensation({
           />
         </Animated.View>
       )}
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -733,7 +857,7 @@ function Step4_Deliverables({
     (data.tiktoks + data.igReels + data.igStories + data.igPosts + data.blogPosts);
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <Text style={[styles.stepHint, { color: colors.textSecondary }]}>
         Set the minimum deliverables expected from the creator.
       </Text>
@@ -752,7 +876,7 @@ function Step4_Deliverables({
           Total deliverables: <Text style={{ fontWeight: '700' }}>{total}</Text>
         </Text>
       </View>
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -769,7 +893,7 @@ function Step5_Dates({
   const haptics = useHaptics();
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <SectionTitle label="Availability Window" />
       <Text style={[styles.stepHint, { color: colors.textSecondary }]}>
         When should creators visit? Bookings must fall within this window.
@@ -826,7 +950,7 @@ function Step5_Dates({
           );
         })}
       </ScrollView>
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -854,10 +978,10 @@ function Step6_Requirements({
   );
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <SectionTitle label="Minimum Followers" />
       <View style={[styles.reqCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <PresetStepper
+        <SliderPreset
           label="Instagram"
           presets={FOLLOWER_PRESETS}
           value={data.minFollowersInstagram}
@@ -865,7 +989,7 @@ function Step6_Requirements({
           formatValue={formatFollowers}
         />
         <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
-        <PresetStepper
+        <SliderPreset
           label="TikTok"
           presets={FOLLOWER_PRESETS}
           value={data.minFollowersTiktok}
@@ -876,7 +1000,7 @@ function Step6_Requirements({
 
       <SectionTitle label="Min. Engagement Rate" />
       <View style={[styles.reqCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <PresetStepper
+        <SliderPreset
           label="Engagement %"
           presets={ENGAGEMENT_PRESETS}
           value={data.minEngagement}
@@ -914,7 +1038,7 @@ function Step6_Requirements({
           );
         })}
       </View>
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -949,7 +1073,7 @@ function Step7_ContentRights({
   ];
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       <SectionTitle label="Content Rights" />
       <View style={styles.rightsStack}>
         {rights.map(({ key, label, desc }) => {
@@ -1014,7 +1138,7 @@ function Step7_ContentRights({
         placeholder="@yourbrand @partner (comma-separated)"
         icon={<AtSign size={16} color={colors.textTertiary} />}
       />
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -1079,7 +1203,7 @@ function Step8_Review({ data }: { data: WizardData }) {
   ];
 
   return (
-    <Animated.View entering={FadeInDown.duration(350).springify()}>
+    <StepEnter>
       {data.photos.length > 0 && (
         <ScrollView
           horizontal
@@ -1112,7 +1236,7 @@ function Step8_Review({ data }: { data: WizardData }) {
           </View>
         ))}
       </View>
-    </Animated.View>
+    </StepEnter>
   );
 }
 
@@ -1124,6 +1248,7 @@ export default function CreateListingScreen() {
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
 
+  const reducedMotion = useReducedMotion();
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(INITIAL_DATA);
   const [loading, setLoading] = useState(false);
@@ -1237,40 +1362,41 @@ export default function CreateListingScreen() {
     photoPrime.prime(launchPicker);
   }, [photoPrime, launchPicker]);
 
+  const buildListingPayload = useCallback(
+    (status: 'active' | 'draft') => ({
+      business_id: user!.id,
+      title: data.title,
+      description: data.description,
+      platform: 'both' as any,
+      category: data.listingType as any,
+      pay_min:
+        data.compensationType === 'gifted' ? 0 : Number(data.paidAmount) || 0,
+      pay_max:
+        data.compensationType === 'gifted' ? 0 : Number(data.paidAmount) || 0,
+      min_followers: Math.max(data.minFollowersInstagram, data.minFollowersTiktok),
+      min_engagement_rate: data.minEngagement,
+      content_type: [
+        data.tiktoks > 0 ? 'TikTok' : '',
+        data.igReels > 0 ? 'Reels' : '',
+        data.igStories > 0 ? 'Stories' : '',
+        data.igPosts > 0 ? 'Posts' : '',
+      ]
+        .filter(Boolean)
+        .join(', '),
+      deadline: data.endDate
+        ? new Date(data.endDate).toISOString()
+        : new Date(Date.now() + 60 * 86400000).toISOString(),
+      image_url: data.photos[0] ?? '',
+      status,
+    }),
+    [user, data],
+  );
+
   const handlePublish = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const result = await api.createListing({
-        business_id: user.id,
-        title: data.title,
-        description: data.description,
-        platform: 'both' as any,
-        category: data.listingType as any,
-        pay_min:
-          data.compensationType === 'gifted'
-            ? 0
-            : Number(data.paidAmount) || 0,
-        pay_max:
-          data.compensationType === 'gifted'
-            ? 0
-            : Number(data.paidAmount) || 0,
-        min_followers:
-          Math.max(data.minFollowersInstagram, data.minFollowersTiktok),
-        min_engagement_rate: data.minEngagement,
-        content_type: [
-          data.tiktoks > 0 ? 'TikTok' : '',
-          data.igReels > 0 ? 'Reels' : '',
-          data.igStories > 0 ? 'Stories' : '',
-          data.igPosts > 0 ? 'Posts' : '',
-        ]
-          .filter(Boolean)
-          .join(', '),
-        deadline: data.endDate
-          ? new Date(data.endDate).toISOString()
-          : new Date(Date.now() + 60 * 86400000).toISOString(),
-        image_url: data.photos[0] ?? '',
-      } as any);
+      const result = await api.createListing(buildListingPayload('active') as any);
 
       if (result) {
         await AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
@@ -1285,7 +1411,29 @@ export default function CreateListingScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user, data, haptics, router]);
+  }, [user, buildListingPayload, haptics, router]);
+
+  const [draftLoading, setDraftLoading] = useState(false);
+
+  const handleSaveDraft = useCallback(async () => {
+    if (!user) return;
+    setDraftLoading(true);
+    try {
+      const result = await api.createListing(buildListingPayload('draft') as any);
+      if (result) {
+        await AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+        haptics.confirm();
+        toast.success('Draft saved!');
+        router.back();
+      } else {
+        toast.error('Failed to save draft');
+      }
+    } catch {
+      toast.error('Something went wrong');
+    } finally {
+      setDraftLoading(false);
+    }
+  }, [user, buildListingPayload, haptics, router]);
 
   const isLastStep = step === TOTAL_STEPS - 1;
 
@@ -1367,6 +1515,16 @@ export default function CreateListingScreen() {
             fullWidth={step === 0}
           />
         </View>
+        {isLastStep && (
+          <Button
+            title="Save as Draft"
+            variant="ghost"
+            onPress={handleSaveDraft}
+            loading={draftLoading}
+            fullWidth
+            style={styles.draftBtn}
+          />
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -1774,9 +1932,68 @@ const styles = StyleSheet.create({
   fullBtn: {
     flex: 1,
   },
+  draftBtn: {
+    marginTop: Spacing.sm,
+  },
   // ─ Shared
   divider: {
     height: StyleSheet.hairlineWidth,
     marginHorizontal: Spacing.lg,
+  },
+  // ─ Slider
+  sliderWrapper: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  sliderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+  },
+  sliderLabel: {
+    ...Typography.subheadline,
+    fontWeight: '500',
+    flex: 1,
+  },
+  sliderPill: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  sliderPillText: {
+    ...Typography.footnote,
+    fontWeight: '700',
+  },
+  sliderTrackArea: {
+    height: 44,
+    justifyContent: 'center',
+  },
+  sliderTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  sliderFill: {
+    height: 4,
+    borderRadius: 2,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: THUMB_RADIUS * 2,
+    height: THUMB_RADIUS * 2,
+    borderRadius: THUMB_RADIUS,
+    borderWidth: 3,
+    top: (44 - THUMB_RADIUS * 2) / 2,
+  },
+  sliderEnds: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Spacing.xs,
+  },
+  sliderEndText: {
+    ...Typography.caption2,
   },
 });

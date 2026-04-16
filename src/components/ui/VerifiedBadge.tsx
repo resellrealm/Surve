@@ -10,7 +10,7 @@
  *   size?       — 'sm' (16pt) | 'md' (20pt) — default 'md'
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,20 +18,12 @@ import {
   StyleSheet,
   type ViewStyle,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  FadeIn,
-  FadeOut,
-  useReducedMotion,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { CheckCircle } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { PressableScale } from './PressableScale';
-import { Springs, Spacing, BorderRadius, Typography, Shadows } from '../../constants/theme';
+import { Spacing, BorderRadius, Typography, Shadows } from '../../constants/theme';
 import { formatDateShort } from '../../lib/dateFormat';
 
 // ─── Platform config ──────────────────────────────────────────────────────────
@@ -106,7 +98,9 @@ function Tooltip({
           onPress={onDismiss}
           style={StyleSheet.absoluteFillObject as ViewStyle}
           accessibilityLabel="Dismiss tooltip"
-        />
+        >
+          {null}
+        </PressableScale>
         <Animated.View
           entering={FadeIn.duration(200)}
           style={[

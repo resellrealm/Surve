@@ -244,6 +244,8 @@ export function mapConversation(row: any, currentUserId: string): Conversation {
     participant_name: row._other_name ?? 'Unknown',
     participant_avatar: row._other_avatar ?? null,
     participant_role: (row._other_role ?? 'creator') as UserRole,
+    participant_verified: row._other_verified ?? false,
+    participant_verified_at: row._other_verified_at ?? null,
     last_message: row.last_message ?? '',
     last_message_at: row.updated_at,
     unread_count: row._unread_count ?? 0,
@@ -270,6 +272,8 @@ export function mapReview(row: any): Review {
     reviewer_id: row.reviewer_id,
     reviewer_name: row._reviewer_name ?? 'Unknown',
     reviewer_avatar: row._reviewer_avatar ?? null,
+    reviewer_verified: row._reviewer_verified ?? false,
+    reviewer_verified_at: row._reviewer_verified_at ?? null,
     target_id: row.target_id,
     rating: row.rating,
     comment: row.comment ?? '',
@@ -538,6 +542,57 @@ export async function replyToReview(
   return { ok: true };
 }
 
+export async function upsertReviewReply(
+  reviewId: string,
+  replierId: string,
+  text: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, message: 'Reply cannot be empty' };
+  const { error } = await supabase
+    .from('reviews')
+    .update({
+      reply_text: trimmed,
+      replied_at: new Date().toISOString(),
+      replied_by: replierId,
+    })
+    .eq('id', reviewId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
+export async function getReviewById(reviewId: string): Promise<Review | null> {
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('id', reviewId)
+    .single();
+  if (error || !data) {
+    const found = mock.mockReviews.find((r) => r.id === reviewId);
+    return found ?? null;
+  }
+  const { data: reviewer } = await supabase
+    .from('users')
+    .select('full_name, avatar_url')
+    .eq('id', data.reviewer_id)
+    .single();
+  let replyName: string | null = null;
+  if (data.reply_text && data.target_id) {
+    const { data: target } = await supabase
+      .from('users')
+      .select('full_name')
+      .eq('id', data.target_id)
+      .single();
+    replyName = target?.full_name ?? null;
+  }
+  return {
+    ...data,
+    reviewer_name: reviewer?.full_name ?? 'Unknown',
+    reviewer_avatar: reviewer?.avatar_url ?? null,
+    reply_name: replyName,
+  } as Review;
+}
+
 // ─── Notification preferences ───────────────────────────────────────────────
 
 export type NotificationPrefs = {
@@ -589,6 +644,17 @@ export async function setNotificationPrefs(
   const { error } = await supabase
     .from('users')
     .update({ notification_prefs: next })
+    .eq('id', userId);
+  return !error;
+}
+
+export async function setShowReviewsPublicly(
+  userId: string,
+  value: boolean
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('users')
+    .update({ show_reviews_publicly: value })
     .eq('id', userId);
   return !error;
 }
@@ -1077,15 +1143,74 @@ export async function createListing(
   return mapListing(data);
 }
 
+export async function getDraftListings(userId: string): Promise<Listing[]> {
+  return retryWithBackoff(async () => {
+    // Resolve business id for this user first
+    const { data: bizData } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (!bizData) return [];
+
+    const { data, error } = await supabase
+      .from('listings')
+      .select('*, businesses(*, users(*))')
+      .eq('business_id', bizData.id)
+      .eq('status', 'draft')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      logError('getDraftListings', error);
+      return [];
+    }
+    return data.map((row: any) => {
+      if (row.businesses) {
+        row.businesses.user = row.businesses.users;
+        row.business_profiles = row.businesses;
+      }
+      return mapListing(row);
+    });
+  });
+}
+
+export async function publishDraftListing(listingId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('listings')
+    .update({ status: 'active' })
+    .eq('id', listingId);
+  if (error) {
+    logError('publishDraftListing', error);
+    return false;
+  }
+  return true;
+}
+
+export async function deleteDraftListing(listingId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('listings')
+    .delete()
+    .eq('id', listingId)
+    .eq('status', 'draft');
+  if (error) {
+    logError('deleteDraftListing', error);
+    return false;
+  }
+  return true;
+}
+
 export async function applyToListing(
   listingId: string,
   creatorId: string,
-  message: string
+  message: string,
+  proposedDeliverables?: Record<string, unknown>
 ): Promise<boolean> {
   const { error } = await supabase.from('applications').insert({
     listing_id: listingId,
     creator_id: creatorId,
     message,
+    proposed_deliverables: proposedDeliverables ?? {},
   });
 
   if (error) {
@@ -1332,6 +1457,56 @@ export async function getBusinessProfile(
   }, 'Failed to load business profile');
 }
 
+export async function getBusinessById(
+  id: string
+): Promise<Business | null> {
+  return retryWithBackoff(async () => {
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('*, users(*)')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      if (USE_MOCK_FALLBACK) {
+        return mock.mockBusinesses.find((b) => b.id === id) ?? null;
+      }
+      return null;
+    }
+
+    (data as any).user = (data as any).users;
+    return mapBusiness(data);
+  }, 'Failed to load business');
+}
+
+export async function getListingsByBusiness(
+  businessId: string
+): Promise<Listing[]> {
+  return retryWithBackoff(async () => {
+    const { data, error } = await supabase
+      .from('listings')
+      .select('*, businesses(*, users(*))')
+      .eq('business_id', businessId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logError('getListingsByBusiness', error);
+      return USE_MOCK_FALLBACK
+        ? mock.mockListings.filter((l) => l.business_id === businessId)
+        : [];
+    }
+
+    return (data ?? []).map((row: any) => {
+      if (row.businesses) {
+        row.businesses.user = row.businesses.users;
+      }
+      row.business_profiles = row.businesses;
+      return mapListing(row);
+    });
+  }, 'Failed to load business listings');
+}
+
 export async function updateBusinessProfile(
   userId: string,
   updates: Partial<Business>
@@ -1409,6 +1584,71 @@ export async function getBusinessApplications(
       return { ...a, creator, listing, creators: undefined, listings: undefined };
     });
   }, 'Failed to load applications');
+}
+
+// ─── Invites ────────────────────────────────────────────────────────────────
+
+export async function sendInvite(
+  listingId: string,
+  creatorId: string,
+  businessId: string,
+  message: string,
+): Promise<boolean> {
+  const { error } = await supabase.from('invites').insert({
+    listing_id: listingId,
+    creator_id: creatorId,
+    business_id: businessId,
+    message,
+    status: 'pending',
+  });
+
+  if (error) {
+    logError('sendInvite', error);
+    // Table may not exist yet — treat as success in mock mode
+    return USE_MOCK_FALLBACK ? true : false;
+  }
+  return true;
+}
+
+export async function getCreatorInvites(creatorId: string): Promise<import('../types').Invite[]> {
+  return retryWithBackoff(async () => {
+    const { data, error } = await supabase
+      .from('invites')
+      .select('*, listings(*, businesses(*, users(*))), businesses(*, users(*))')
+      .eq('creator_id', creatorId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      if (USE_MOCK_FALLBACK) return mock.mockInvites.filter((i) => i.creator_id === creatorId);
+      return [];
+    }
+
+    return data.map((row: any) => {
+      const listing = row.listings
+        ? { ...row.listings, business: row.listings.businesses ? { ...row.listings.businesses, user: row.listings.businesses.users } : undefined }
+        : undefined;
+      const business = row.businesses
+        ? { ...row.businesses, user: row.businesses.users }
+        : undefined;
+      return { ...row, listing, business, listings: undefined, businesses: undefined } as import('../types').Invite;
+    });
+  }, 'Failed to load invites');
+}
+
+export async function updateInviteStatus(
+  inviteId: string,
+  status: 'accepted' | 'declined',
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('invites')
+    .update({ status })
+    .eq('id', inviteId);
+
+  if (error) {
+    logError('updateInviteStatus', error);
+    return USE_MOCK_FALLBACK ? true : false;
+  }
+  return true;
 }
 
 // ─── Bookings ───────────────────────────────────────────────────────────────
@@ -1880,8 +2120,24 @@ export async function toggleReaction(
 
 // ─── Reviews ────────────────────────────────────────────────────────────────
 
-export async function getReviews(targetUserId: string): Promise<Review[]> {
+export async function getReviews(
+  targetUserId: string,
+  requestingUserId?: string
+): Promise<Review[]> {
   return retryWithBackoff(async () => {
+    // Check target user's privacy flag before fetching reviews
+    const isOwner = requestingUserId === targetUserId;
+    if (!isOwner) {
+      const { data: targetUser } = await supabase
+        .from('users')
+        .select('show_reviews_publicly')
+        .eq('id', targetUserId)
+        .single();
+      if (targetUser && targetUser.show_reviews_publicly === false) {
+        return [];
+      }
+    }
+
     const { data, error } = await supabase
       .from('reviews')
       .select('*')
@@ -1891,6 +2147,17 @@ export async function getReviews(targetUserId: string): Promise<Review[]> {
     if (error) {
       logError('getReviews', error);
       return USE_MOCK_FALLBACK ? mock.mockReviews.filter((r) => r.target_id === targetUserId) : [];
+    }
+
+    // Fetch target user name once (for reply_name label)
+    let targetName: string | null = null;
+    {
+      const { data: tu } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', targetUserId)
+        .single();
+      targetName = tu?.full_name ?? null;
     }
 
     const reviews: Review[] = [];
@@ -1910,6 +2177,15 @@ export async function getReviews(targetUserId: string): Promise<Review[]> {
         rating: row.rating,
         comment: row.comment ?? '',
         created_at: row.created_at,
+        tags: row.tags ?? null,
+        is_public: row.is_public ?? null,
+        photos: row.photos ?? null,
+        verified_booking_id: row.verified_booking_id ?? null,
+        reviewer_role: row.reviewer_role ?? null,
+        reply_text: row.reply_text ?? null,
+        replied_at: row.replied_at ?? null,
+        replied_by: row.replied_by ?? null,
+        reply_name: row.reply_text ? targetName : null,
       });
     }
 
@@ -1926,6 +2202,11 @@ export async function createReview(review: {
   target_id: string;
   rating: number;
   comment: string;
+  tags?: string[];
+  is_public?: boolean;
+  photos?: string[];
+  verified_booking_id?: string;
+  reviewer_role?: 'creator' | 'business';
 }): Promise<boolean> {
   const { error } = await supabase.from('reviews').insert(review);
 
@@ -2998,9 +3279,9 @@ export async function trackProfileView(
 ): Promise<void> {
   if (!targetId) return;
   try {
-    await supabase
-      .from('profile_views')
-      .insert({ target_id: targetId, viewer_id: viewerId });
+    await supabase.functions.invoke('track-profile-view', {
+      body: { target_id: targetId, viewer_id: viewerId ?? undefined },
+    });
   } catch (err) {
     devWarn('trackProfileView failed', err);
   }

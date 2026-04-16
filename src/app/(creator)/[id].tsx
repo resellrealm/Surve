@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,6 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  FlatList,
+  ActivityIndicator,
+  Share,
+  ActionSheetIOS,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -55,6 +60,7 @@ import { CreatorProfileSkeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { VerifiedBadge } from '../../components/ui/VerifiedBadge';
 import * as api from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { useStore } from '../../lib/store';
 import {
   Typography,
@@ -62,7 +68,7 @@ import {
   BorderRadius,
   Shadows,
 } from '../../constants/theme';
-import type { Creator, Review, CreatorSocialAccount, SocialPlatform } from '../../types';
+import type { Creator, Review, CreatorSocialAccount, SocialPlatform, Listing } from '../../types';
 
 import { formatDateShort } from '../../lib/dateFormat';
 
@@ -165,7 +171,12 @@ function SocialCard({
   engagementRate,
   avgViews,
   verified,
+  verifiedAt,
   colors,
+  isOwner,
+  accountId,
+  onDisconnect,
+  onRefresh,
 }: {
   platform: SocialPlatform;
   handle: string;
@@ -173,9 +184,16 @@ function SocialCard({
   engagementRate?: number | null;
   avgViews?: number | null;
   verified?: boolean;
+  verifiedAt?: string | null;
   colors: ReturnType<typeof useTheme>['colors'];
+  isOwner?: boolean;
+  accountId?: string | null;
+  onDisconnect?: (id: string) => void;
+  onRefresh?: (id: string) => void;
 }) {
+  const haptics = useHaptics();
   const config = PLATFORM_CONFIG[platform];
+  const badgePlatform = (platform === 'twitter' ? undefined : platform) as 'tiktok' | 'instagram' | 'youtube' | undefined;
   return (
     <View
       accessible
@@ -190,7 +208,11 @@ function SocialCard({
               {handle}
             </Text>
             {verified && (
-              <CheckCircle size={14} color={colors.primary} fill={colors.primary} strokeWidth={2} />
+              <VerifiedBadge
+                platform={badgePlatform}
+                verifiedAt={verifiedAt ?? undefined}
+                size="sm"
+              />
             )}
           </View>
           <Text style={[styles.socialPlatformLabel, { color: colors.textTertiary }]}>
@@ -222,6 +244,30 @@ function SocialCard({
               </Text>
             </View>
           )}
+        </View>
+      )}
+      {isOwner && accountId && (
+        <View style={[styles.socialOwnerActions, { borderTopColor: colors.borderLight }]}>
+          <PressableScale
+            scaleValue={0.95}
+            onPress={() => { haptics.tap(); onRefresh?.(accountId); }}
+            style={[styles.socialOwnerBtn, { borderColor: colors.border }]}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh stats"
+          >
+            <TrendingUp size={13} color={colors.primary} strokeWidth={2} />
+            <Text style={[styles.socialOwnerBtnText, { color: colors.primary }]}>Refresh stats</Text>
+          </PressableScale>
+          <PressableScale
+            scaleValue={0.95}
+            onPress={() => { haptics.tap(); onDisconnect?.(accountId); }}
+            style={[styles.socialOwnerBtn, { borderColor: colors.border }]}
+            accessibilityRole="button"
+            accessibilityLabel="Disconnect account"
+          >
+            <X size={13} color={colors.error} strokeWidth={2} />
+            <Text style={[styles.socialOwnerBtnText, { color: colors.error }]}>Disconnect</Text>
+          </PressableScale>
         </View>
       )}
     </View>
@@ -263,7 +309,20 @@ function RatingSummary({
   );
 }
 
-function ReviewCard({ review, colors }: { review: Review; colors: ReturnType<typeof useTheme>['colors'] }) {
+function ReviewCard({
+  review,
+  colors,
+  revieweeName,
+  canRespond,
+  onRespond,
+}: {
+  review: Review;
+  colors: ReturnType<typeof useTheme>['colors'];
+  revieweeName?: string;
+  canRespond?: boolean;
+  onRespond?: (reviewId: string) => void;
+}) {
+  const haptics = useHaptics();
   return (
     <View
       style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}
@@ -300,20 +359,232 @@ function ReviewCard({ review, colors }: { review: Review; colors: ReturnType<typ
       <Text style={[styles.reviewComment, { color: colors.textSecondary }]}>
         {review.comment}
       </Text>
-      {review.reply_text && (
+      {review.reply_text ? (
         <View
           style={[styles.replyBox, { backgroundColor: colors.surfaceSecondary, borderLeftColor: colors.primary }]}
         >
-          <Text style={[styles.replyLabel, { color: colors.primary }]}>RESPONSE</Text>
+          <Text style={[styles.replyLabel, { color: colors.primary }]}>
+            {revieweeName ? `Response from ${revieweeName}` : 'RESPONSE'}
+          </Text>
           <Text style={[styles.replyText, { color: colors.text }]}>{review.reply_text}</Text>
           {review.replied_at && (
             <Text style={[styles.replyDate, { color: colors.textTertiary }]}>
               {formatDateShort(review.replied_at)}
             </Text>
           )}
+          {canRespond && (
+            <PressableScale
+              onPress={() => { haptics.tap(); onRespond?.(review.id); }}
+              scaleValue={0.96}
+              accessibilityRole="button"
+              accessibilityLabel="Edit your response"
+              style={[styles.respondBtn, { borderColor: colors.primary }]}
+            >
+              <Text style={[styles.respondBtnText, { color: colors.primary }]}>Edit response</Text>
+            </PressableScale>
+          )}
         </View>
-      )}
+      ) : canRespond ? (
+        <PressableScale
+          onPress={() => { haptics.tap(); onRespond?.(review.id); }}
+          scaleValue={0.96}
+          accessibilityRole="button"
+          accessibilityLabel="Respond to this review"
+          style={[styles.respondBtn, { borderColor: colors.primary }]}
+        >
+          <Text style={[styles.respondBtnText, { color: colors.primary }]}>Respond to review</Text>
+        </PressableScale>
+      ) : null}
     </View>
+  );
+}
+
+// ─── Invite Modal ─────────────────────────────────────────────────────────────
+
+const MAX_INVITE_LENGTH = 400;
+
+function InviteModal({
+  visible,
+  onClose,
+  creatorId,
+  businessUserId,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  creatorId: string;
+  businessUserId: string;
+}) {
+  const { colors } = useTheme();
+  const haptics = useHaptics();
+  const insets = useSafeAreaInsets();
+
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loadingListings, setLoadingListings] = useState(false);
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setLoadingListings(true);
+    setSelectedListingId(null);
+    setMessage('');
+    setSubmitted(false);
+    api.getBusinessProfile(businessUserId).then((biz) => {
+      if (!biz) { setLoadingListings(false); return; }
+      setBusinessId(biz.id);
+      api.getListingsByBusiness(biz.id).then((ls) => {
+        setListings(ls);
+        setLoadingListings(false);
+      });
+    });
+  }, [visible, businessUserId]);
+
+  const resetAndClose = useCallback(() => {
+    setSelectedListingId(null);
+    setMessage('');
+    setSubmitted(false);
+    onClose();
+  }, [onClose]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!selectedListingId || !businessId) return;
+    haptics.confirm();
+    setSubmitting(true);
+    const ok = await api.sendInvite(selectedListingId, creatorId, businessId, message.trim());
+    setSubmitting(false);
+    if (ok) { haptics.success(); setSubmitted(true); } else { haptics.error(); }
+  }, [selectedListingId, businessId, creatorId, message, haptics]);
+
+  const selectedListing = listings.find((l) => l.id === selectedListingId);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={resetAndClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.modalContainer, { backgroundColor: colors.background }]}
+      >
+        <View
+          style={[styles.modalHeader, { borderBottomColor: colors.borderLight, paddingTop: insets.top > 0 ? insets.top : Spacing.lg }]}
+        >
+          <PressableScale
+            scaleValue={0.9} onPress={() => { haptics.tap(); resetAndClose(); }}
+            hitSlop={12} accessibilityRole="button" accessibilityLabel="Close"
+            style={styles.modalCloseBtn}
+          >
+            <X size={22} color={colors.text} strokeWidth={2.2} />
+          </PressableScale>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Invite to Collab</Text>
+          <View style={styles.modalCloseBtn} />
+        </View>
+
+        {submitted ? (
+          <Animated.View entering={FadeInDown.duration(400)} style={styles.successContainer}>
+            <View style={[styles.successIcon, { backgroundColor: colors.successLight }]}>
+              <Check size={32} color={colors.success} strokeWidth={2.5} />
+            </View>
+            <Text style={[styles.successTitle, { color: colors.text }]}>Invite Sent!</Text>
+            <Text style={[styles.successBody, { color: colors.textSecondary }]}>
+              {selectedListing
+                ? `Your invite for "${selectedListing.title}" has been sent. The creator will be notified.`
+                : 'Your invite has been sent. The creator will be notified.'}
+            </Text>
+            <Button title="Done" onPress={resetAndClose} size="lg" style={styles.successBtn} />
+          </Animated.View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={[styles.modalBody, { paddingBottom: insets.bottom + Spacing.xl }]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>
+              Choose a listing
+            </Text>
+
+            {loadingListings ? (
+              <View style={styles.inviteLoading}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : listings.length === 0 ? (
+              <View style={[styles.inviteEmpty, { backgroundColor: colors.surfaceSecondary, borderRadius: BorderRadius.lg }]}>
+                <Text style={[styles.inviteEmptyText, { color: colors.textSecondary }]}>
+                  No active listings found. Create a listing first.
+                </Text>
+              </View>
+            ) : (
+              listings.map((listing) => {
+                const isSelected = selectedListingId === listing.id;
+                return (
+                  <PressableScale
+                    key={listing.id}
+                    onPress={() => { haptics.select(); setSelectedListingId(listing.id); }}
+                    accessibilityRole="radio"
+                    accessibilityLabel={listing.title}
+                    accessibilityState={{ selected: isSelected }}
+                    style={[
+                      styles.listingRow,
+                      {
+                        backgroundColor: isSelected ? colors.primaryLight + '12' : colors.surface,
+                        borderColor: isSelected ? colors.primary : colors.borderLight,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.radioOuter, { borderColor: isSelected ? colors.primary : colors.border }]}>
+                      {isSelected && <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />}
+                    </View>
+                    <View style={styles.listingRowInfo}>
+                      <Text style={[styles.listingRowTitle, { color: isSelected ? colors.primary : colors.text }]} numberOfLines={1}>
+                        {listing.title}
+                      </Text>
+                      <Text style={[styles.listingRowMeta, { color: colors.textTertiary }]} numberOfLines={1}>
+                        ${listing.pay_min}–${listing.pay_max} · {listing.location}
+                      </Text>
+                    </View>
+                  </PressableScale>
+                );
+              })
+            )}
+
+            <Text style={[styles.sectionLabel, { color: colors.text, marginTop: Spacing.xl }]}>
+              Personal message (optional)
+            </Text>
+            <View style={[styles.textAreaWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TextInput
+                value={message}
+                onChangeText={(t) => t.length <= MAX_INVITE_LENGTH && setMessage(t)}
+                placeholder="Tell them why you'd love to collab…"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                style={[styles.textArea, { color: colors.text }]}
+                maxLength={MAX_INVITE_LENGTH}
+                textAlignVertical="top"
+              />
+              <Text style={[styles.charCount, { color: colors.textTertiary }]}>
+                {message.length}/{MAX_INVITE_LENGTH}
+              </Text>
+            </View>
+
+            <Button
+              title={submitting ? 'Sending…' : 'Send Invite'}
+              onPress={handleSubmit}
+              size="lg"
+              disabled={!selectedListingId || submitting || loadingListings}
+              variant="primary"
+              style={{ marginTop: Spacing.xl }}
+              icon={
+                <Handshake
+                  size={18}
+                  color={!selectedListingId || submitting ? colors.textTertiary : colors.onPrimary}
+                  strokeWidth={2}
+                />
+              }
+            />
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -494,11 +765,37 @@ export default function CreatorProfileScreen() {
   const [creatorReviews, setCreatorReviews] = React.useState<Review[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [reportVisible, setReportVisible] = useState(false);
+  const [inviteVisible, setInviteVisible] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [bioExpanded, setBioExpanded] = useState(false);
 
   const isFollowed = creator ? followedCreators.includes(creator.id) : false;
   const isBusiness = currentUser?.role === 'business';
+  const isOwner = currentUser?.id === creator?.user_id;
+  const reviewsVisible = isOwner || (creator?.user.show_reviews_publicly !== false);
+  const isOwnProfile = !!(currentUser && creator && currentUser.id === creator.user_id && currentUser.role === 'creator');
+
+  const handleRespond = useCallback((reviewId: string) => {
+    router.push(`/(review)/respond?reviewId=${reviewId}`);
+  }, [router]);
+
+  const handleRefreshSocialStats = useCallback(async (accountId: string) => {
+    haptics.tap();
+    await supabase.functions.invoke('social-sync-stats', { body: { account_id: accountId } });
+    // Refetch creator to show updated stats
+    setRetryCount((c) => c + 1);
+  }, [haptics]);
+
+  const handleDisconnectSocial = useCallback((accountId: string) => {
+    haptics.confirm();
+    Alert.alert('Disconnect account?', 'Your social stats will be removed from your profile.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Disconnect', style: 'destructive', onPress: async () => {
+        await supabase.from('creator_social_accounts').delete().eq('id', accountId);
+        setRetryCount((c) => c + 1);
+      }},
+    ]);
+  }, [haptics]);
 
   const refetchCreator = useCallback(() => { setRetryCount((c) => c + 1); }, []);
 
@@ -518,50 +815,77 @@ export default function CreatorProfileScreen() {
     }).catch(() => { setLoading(false); });
   }, [id, retryCount]);
 
-  const handleInvite = useCallback(() => { haptics.success(); }, [haptics]);
+  const handleInvite = useCallback(() => { haptics.confirm(); setInviteVisible(true); }, [haptics]);
   const handleMessage = useCallback(() => { haptics.confirm(); }, [haptics]);
   const handleOpenReport = useCallback(() => { haptics.confirm(); setReportVisible(true); }, [haptics]);
 
+  const handleMoreOptions = useCallback(() => {
+    haptics.confirm();
+    const profileUrl = `https://surve.app/creator/${id}`;
+    const creatorName = creator?.user.full_name ?? 'this creator';
+    const doBlock = async () => {
+      if (!currentUser?.id || !creator) return;
+      Alert.alert(`Block ${creatorName}?`, 'They won\'t be able to contact you and their profile won\'t appear in searches.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Block', style: 'destructive', onPress: async () => {
+          await api.blockUser(currentUser.id, creator.user_id);
+          router.back();
+        }},
+      ]);
+    };
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Share profile', 'Report', 'Block'],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: 3,
+        },
+        (idx) => {
+          if (idx === 1) Share.share({ message: `Check out ${creatorName} on Surve: ${profileUrl}` });
+          else if (idx === 2) setReportVisible(true);
+          else if (idx === 3) doBlock();
+        },
+      );
+    } else {
+      Alert.alert('Options', undefined, [
+        { text: 'Share profile', onPress: () => Share.share({ message: `Check out ${creatorName} on Surve: ${profileUrl}` }) },
+        { text: 'Report', style: 'destructive', onPress: () => setReportVisible(true) },
+        { text: 'Block', style: 'destructive', onPress: doBlock },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [haptics, id, creator, currentUser, router]);
+
   // Build social accounts list from either social_accounts or legacy fields
   const socialAccounts = useMemo((): Array<{
+    id: string | null;
     platform: SocialPlatform;
     handle: string;
     followers: number;
     engagementRate: number | null;
     avgViews: number | null;
     verified: boolean;
+    verifiedAt: string | null;
   }> => {
     if (!creator) return [];
     if (creator.social_accounts && creator.social_accounts.length > 0) {
       return creator.social_accounts.map((sa) => ({
+        id: (sa as any).id ?? null,
         platform: sa.platform,
         handle: sa.handle,
         followers: sa.followers ?? 0,
         engagementRate: sa.engagement_rate,
         avgViews: sa.avg_views,
         verified: sa.verified,
+        verifiedAt: sa.verified_at,
       }));
     }
-    const accounts: Array<{ platform: SocialPlatform; handle: string; followers: number; engagementRate: number | null; avgViews: number | null; verified: boolean }> = [];
+    const accounts: Array<{ id: null; platform: SocialPlatform; handle: string; followers: number; engagementRate: number | null; avgViews: number | null; verified: boolean; verifiedAt: string | null }> = [];
     if (creator.instagram_handle) {
-      accounts.push({
-        platform: 'instagram',
-        handle: creator.instagram_handle,
-        followers: creator.instagram_followers,
-        engagementRate: creator.engagement_rate,
-        avgViews: creator.avg_views,
-        verified: creator.verified,
-      });
+      accounts.push({ id: null, platform: 'instagram', handle: creator.instagram_handle, followers: creator.instagram_followers, engagementRate: creator.engagement_rate, avgViews: creator.avg_views, verified: creator.verified, verifiedAt: null });
     }
     if (creator.tiktok_handle) {
-      accounts.push({
-        platform: 'tiktok',
-        handle: creator.tiktok_handle,
-        followers: creator.tiktok_followers,
-        engagementRate: creator.engagement_rate,
-        avgViews: creator.avg_views,
-        verified: creator.verified,
-      });
+      accounts.push({ id: null, platform: 'tiktok', handle: creator.tiktok_handle, followers: creator.tiktok_followers, engagementRate: creator.engagement_rate, avgViews: creator.avg_views, verified: creator.verified, verifiedAt: null });
     }
     return accounts;
   }, [creator]);
@@ -642,7 +966,7 @@ export default function CreatorProfileScreen() {
               </AnimatedLikeButton>
               <PressableScale
                 scaleValue={0.85}
-                onPress={handleOpenReport}
+                onPress={handleMoreOptions}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="More options"
@@ -697,15 +1021,28 @@ export default function CreatorProfileScreen() {
           <View style={styles.nameRow} accessibilityRole="header">
             <Text style={[styles.name, { color: colors.text }]}>{creator.user.full_name}</Text>
             {creator.verified && (
-              <CheckCircle size={20} color={colors.primary} fill={colors.primary} strokeWidth={2} />
+              <VerifiedBadge
+                platform={socialAccounts[0]?.platform !== 'twitter' ? (socialAccounts[0]?.platform as 'tiktok' | 'instagram' | 'youtube' | undefined) : undefined}
+                verifiedAt={socialAccounts[0]?.verifiedAt ?? undefined}
+                size="md"
+              />
             )}
           </View>
 
           {/* Handle */}
           {creator.user.username && (
-            <Text style={[styles.username, { color: colors.textTertiary }]}>
-              @{creator.user.username}
-            </Text>
+            <View style={styles.usernameRow}>
+              <Text style={[styles.username, { color: colors.textTertiary }]}>
+                @{creator.user.username}
+              </Text>
+              {creator.verified && (
+                <VerifiedBadge
+                  platform={socialAccounts[0]?.platform !== 'twitter' ? (socialAccounts[0]?.platform as 'tiktok' | 'instagram' | 'youtube' | undefined) : undefined}
+                  verifiedAt={socialAccounts[0]?.verifiedAt ?? undefined}
+                  size="sm"
+                />
+              )}
+            </View>
           )}
 
           {/* Location */}
@@ -772,7 +1109,12 @@ export default function CreatorProfileScreen() {
                   engagementRate={acct.engagementRate}
                   avgViews={acct.avgViews}
                   verified={acct.verified}
+                  verifiedAt={acct.verifiedAt}
                   colors={colors}
+                  isOwner={isOwner}
+                  accountId={acct.id}
+                  onRefresh={handleRefreshSocialStats}
+                  onDisconnect={handleDisconnectSocial}
                 />
               ))}
             </View>
@@ -890,8 +1232,106 @@ export default function CreatorProfileScreen() {
           </Card>
         </Animated.View>
 
+        {/* ── Audience Demographics ────────────────────────────────────── */}
+        {(() => {
+          const demo: { age_range?: Record<string, number>; gender?: Record<string, number>; top_countries?: string[] } =
+            (creator as any).audience_demographics ?? {};
+          const hasDemo = demo.age_range || demo.gender || demo.top_countries;
+          if (!isOwner && !hasDemo) return null;
+          const ageRanges = demo.age_range ?? {};
+          const gender = demo.gender ?? {};
+          const countries = demo.top_countries ?? [];
+          return (
+            <Animated.View entering={FadeInDown.duration(500).delay(375)} style={styles.pagePad}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+                Audience Demographics
+              </Text>
+              <Card style={{ padding: Spacing.md }}>
+                {Object.keys(ageRanges).length > 0 && (
+                  <View style={{ marginBottom: Spacing.md }}>
+                    <Text style={{ ...Typography.caption1, fontWeight: '600', color: colors.textSecondary, marginBottom: Spacing.sm }}>Age Range</Text>
+                    {Object.entries(ageRanges).map(([range, pct]) => (
+                      <View key={range} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 6 }}>
+                        <Text style={{ ...Typography.caption2, color: colors.textTertiary, width: 48 }}>{range}</Text>
+                        <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.surfaceSecondary }}>
+                          <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.primary, width: `${Math.min(100, Number(pct))}%` }} />
+                        </View>
+                        <Text style={{ ...Typography.caption2, color: colors.textSecondary, width: 36, textAlign: 'right' }}>{pct}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {Object.keys(gender).length > 0 && (
+                  <View style={{ marginBottom: Spacing.md }}>
+                    <Text style={{ ...Typography.caption1, fontWeight: '600', color: colors.textSecondary, marginBottom: Spacing.sm }}>Gender Split</Text>
+                    <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                      {Object.entries(gender).map(([g, pct]) => (
+                        <View key={g} style={{ flex: 1, alignItems: 'center' }}>
+                          <Text style={{ ...Typography.footnote, fontWeight: '600', color: colors.text }}>{pct}%</Text>
+                          <Text style={{ ...Typography.caption2, color: colors.textTertiary, textTransform: 'capitalize' }}>{g}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                {countries.length > 0 && (
+                  <View>
+                    <Text style={{ ...Typography.caption1, fontWeight: '600', color: colors.textSecondary, marginBottom: Spacing.sm }}>Top Countries</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {countries.slice(0, 5).map((c) => (
+                        <View key={c} style={{ paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.full, backgroundColor: colors.primary + '18' }}>
+                          <Text style={{ ...Typography.caption2, color: colors.primary }}>{c}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                {!hasDemo && isOwner && (
+                  <Text style={{ ...Typography.footnote, color: colors.textSecondary, textAlign: 'center' }}>
+                    No audience data yet. Connect social accounts to populate this.
+                  </Text>
+                )}
+              </Card>
+            </Animated.View>
+          );
+        })()}
+
+        {/* ── Past Brand Collabs ────────────────────────────────────────── */}
+        {(() => {
+          const collabs: Array<{ brand_name: string; description?: string; year?: number }> =
+            (creator as any).past_brand_collabs ?? [];
+          if (!isOwner && collabs.length === 0) return null;
+          return (
+            <Animated.View entering={FadeInDown.duration(500).delay(380)} style={styles.pagePad}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+                Past Brand Collabs
+              </Text>
+              {collabs.length === 0 && isOwner ? (
+                <Card style={{ padding: Spacing.md }}>
+                  <Text style={[{ color: colors.textSecondary, ...Typography.footnote, textAlign: 'center' }]}>
+                    Add brands you've worked with to boost your profile
+                  </Text>
+                </Card>
+              ) : (
+                collabs.map((c, idx) => (
+                  <Card key={idx} style={{ padding: Spacing.md, marginBottom: Spacing.sm, flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
+                    <View style={{ width: 40, height: 40, borderRadius: BorderRadius.sm, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
+                      <Handshake size={20} color={colors.primary} strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ ...Typography.subheadline, fontWeight: '600', color: colors.text }}>{c.brand_name}</Text>
+                      {c.description ? <Text style={{ ...Typography.caption1, color: colors.textSecondary, marginTop: 2 }}>{c.description}</Text> : null}
+                    </View>
+                    {c.year ? <Text style={{ ...Typography.caption1, color: colors.textTertiary }}>{c.year}</Text> : null}
+                  </Card>
+                ))
+              )}
+            </Animated.View>
+          );
+        })()}
+
         {/* ── Reviews ───────────────────────────────────────────────────── */}
-        {(creatorReviews.length > 0 || creator.total_reviews > 0) && (
+        {reviewsVisible && (creatorReviews.length > 0 || creator.total_reviews > 0) && (
           <Animated.View entering={FadeInDown.duration(500).delay(400)} style={styles.pagePad}>
             <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
               Reviews
@@ -900,7 +1340,14 @@ export default function CreatorProfileScreen() {
               <RatingSummary rating={creator.rating} totalReviews={creator.total_reviews} colors={colors} />
             </Card>
             {creatorReviews.map((review) => (
-              <ReviewCard key={review.id} review={review} colors={colors} />
+              <ReviewCard
+                key={review.id}
+                review={review}
+                colors={colors}
+                revieweeName={creator.user?.full_name ?? currentUser?.full_name}
+                canRespond={isOwnProfile}
+                onRespond={handleRespond}
+              />
             ))}
           </Animated.View>
         )}
@@ -943,6 +1390,14 @@ export default function CreatorProfileScreen() {
           onClose={() => setReportVisible(false)}
           creatorName={creator.user.full_name}
           targetUserId={creator.user_id}
+        />
+      )}
+      {creator && isBusiness && currentUser && (
+        <InviteModal
+          visible={inviteVisible}
+          onClose={() => setInviteVisible(false)}
+          creatorId={creator.id}
+          businessUserId={currentUser.id}
         />
       )}
     </View>
@@ -1020,9 +1475,14 @@ const styles = StyleSheet.create({
   name: {
     ...Typography.title2,
   },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
   username: {
     ...Typography.subheadline,
-    marginBottom: Spacing.xs,
   },
   locationRow: {
     flexDirection: 'row',
@@ -1160,6 +1620,17 @@ const styles = StyleSheet.create({
   replyLabel: { ...Typography.caption2, fontWeight: '700', letterSpacing: 0.8 },
   replyText: { ...Typography.footnote, lineHeight: 20 },
   replyDate: { ...Typography.caption2, marginTop: 2 },
+  respondBtn: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: BorderRadius.sm,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  respondBtnText: { ...Typography.caption1, fontWeight: '600' },
 
   // ── Bottom CTA ───────────────────────────────────────────────────────────────
   bottomCta: {
@@ -1183,6 +1654,9 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  socialOwnerActions: { flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm, marginTop: Spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
+  socialOwnerBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7, borderRadius: BorderRadius.sm, borderWidth: 1, minHeight: 32 },
+  socialOwnerBtnText: { ...Typography.caption1, fontWeight: '600' },
   modalCloseBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   modalTitle: { ...Typography.headline, textAlign: 'center', flex: 1 },
   modalBody: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg },
@@ -1218,4 +1692,22 @@ const styles = StyleSheet.create({
   successTitle: { ...Typography.title2, marginBottom: Spacing.sm },
   successBody: { ...Typography.body, textAlign: 'center', lineHeight: 24 },
   successBtn: { marginTop: Spacing.xxl, alignSelf: 'stretch' },
+
+  // ── Invite Modal ────────────────────────────────────────────────────────────
+  inviteLoading: { paddingVertical: Spacing.xl, alignItems: 'center' },
+  inviteEmpty: { padding: Spacing.lg, marginBottom: Spacing.sm },
+  inviteEmptyText: { ...Typography.footnote, textAlign: 'center' },
+  listingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    marginBottom: Spacing.sm,
+    minHeight: 52,
+  },
+  listingRowInfo: { flex: 1 },
+  listingRowTitle: { ...Typography.subheadline, fontWeight: '600', marginBottom: 2 },
+  listingRowMeta: { ...Typography.caption1 },
 });

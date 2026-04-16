@@ -1,5 +1,8 @@
 jest.mock('../supabase', () => ({ supabase: {} }));
 jest.mock('../moderation', () => ({ moderateText: jest.fn() }));
+jest.mock('../sentry', () => ({ captureError: jest.fn(), setSentryUser: jest.fn(), initSentry: jest.fn(), addNavigationBreadcrumb: jest.fn() }));
+jest.mock('@sentry/react-native', () => ({ init: jest.fn(), captureException: jest.fn(), captureMessage: jest.fn(), setUser: jest.fn(), addBreadcrumb: jest.fn() }));
+jest.mock('../toast', () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 
 import {
   mapUser,
@@ -117,6 +120,7 @@ describe('mapUser', () => {
       accepted_terms_at: '2026-01-01T00:00:00Z',
       terms_version: 'v1.0.0',
       milestones: {},
+      show_reviews_publicly: true,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     });

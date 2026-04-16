@@ -11,7 +11,7 @@ interface StatsRowProps {
   avgViews: number;
 }
 
-function formatCount(count: number): string {
+export function formatCount(count: number): string {
   if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
   if (count >= 1000) return `${(count / 1000).toFixed(0)}K`;
   return count.toString();
@@ -20,15 +20,17 @@ function formatCount(count: number): string {
 function StatItem({
   label,
   value,
+  accent,
   colors,
 }: {
   label: string;
   value: string;
+  accent?: string;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
     <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.statItem}>
-      <ThemedText variant="headline" style={[styles.statValue, { color: colors.text }]}>{value}</ThemedText>
+      <ThemedText variant="headline" style={[styles.statValue, { color: accent ?? colors.text }]}>{value}</ThemedText>
       <ThemedText variant="caption2" style={[styles.statLabel, { color: colors.textTertiary }]}>
         {label}
       </ThemedText>
@@ -43,19 +45,45 @@ export function StatsRow({
   avgViews,
 }: StatsRowProps) {
   const { colors } = useTheme();
-  const totalFollowers = instagramFollowers + tiktokFollowers;
+
+  const showIG = instagramFollowers > 0;
+  const showTT = tiktokFollowers > 0;
+  const showBoth = showIG && showTT;
 
   return (
     <View style={[styles.container, { borderTopColor: colors.borderLight }]}>
-      <StatItem
-        label="Followers"
-        value={formatCount(totalFollowers)}
-        colors={colors}
-      />
-      <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
+      {showIG && (
+        <>
+          <StatItem
+            label="IG"
+            value={formatCount(instagramFollowers)}
+            accent="#E1306C"
+            colors={colors}
+          />
+          {showBoth && <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />}
+        </>
+      )}
+      {showTT && (
+        <>
+          <StatItem
+            label="TikTok"
+            value={formatCount(tiktokFollowers)}
+            accent="#000000"
+            colors={colors}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
+        </>
+      )}
+      {!showIG && !showTT && (
+        <>
+          <StatItem label="Followers" value="—" colors={colors} />
+          <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
+        </>
+      )}
       <StatItem
         label="Engagement"
         value={`${engagementRate}%`}
+        accent={engagementRate >= 5 ? colors.completed : undefined}
         colors={colors}
       />
       <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />

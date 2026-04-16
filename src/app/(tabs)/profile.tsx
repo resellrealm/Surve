@@ -32,6 +32,7 @@ import {
   Bookmark,
   MessageSquare,
   Clock,
+  BarChart2,
 } from 'lucide-react-native';
 import type { Creator, Business, Review, Listing } from '../../types';
 import { useHaptics } from '../../hooks/useHaptics';
@@ -49,6 +50,7 @@ import { Card } from '../../components/ui/Card';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { PulsingDot } from '../../components/ui/PulsingDot';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { VerifiedBadge } from '../../components/ui/VerifiedBadge';
 import * as api from '../../lib/api';
 import { formatSmartDate } from '../../lib/dateFormat';
 import {
@@ -874,6 +876,18 @@ export default function ProfileScreen() {
             onPress={() => router.push('/(profile)/earnings')}
             accessibilityHint="Opens your earnings and transaction history"
           />
+          {isCreator && (
+            <>
+              <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
+              <SettingsRow
+                icon={<BarChart2 size={20} color={colors.primary} strokeWidth={2} />}
+                title="Analytics"
+                subtitle="Views, applications, acceptance rate"
+                onPress={() => router.push('/(profile)/analytics')}
+                accessibilityHint="Opens your creator analytics dashboard"
+              />
+            </>
+          )}
           <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
             icon={<CreditCard size={20} color={colors.primary} strokeWidth={2} />}

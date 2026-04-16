@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,6 +6,7 @@ import {
   FlatList,
   RefreshControl,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,7 +15,7 @@ import Animated, {
   FadeIn,
   FadeOut,
 } from 'react-native-reanimated';
-import { AlertTriangle, RotateCcw, CheckSquare, X, CheckCircle, XCircle, MessageCircle } from 'lucide-react-native';
+import { AlertTriangle, RotateCcw, CheckSquare, X, CheckCircle, XCircle, MessageCircle, Handshake, MapPin, DollarSign } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useHaptics } from '../../hooks/useHaptics';
 import { toast } from '../../lib/toast';
@@ -25,6 +26,7 @@ import { BookingCard } from '../../components/booking/BookingCard';
 import { SwipeableRow, type SwipeAction } from '../../components/ui/SwipeableRow';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { Avatar } from '../../components/ui/Avatar';
 import {
   Colors,
   Typography,
@@ -33,15 +35,138 @@ import {
   Shadows,
   Layout,
 } from '../../constants/theme';
-import type { Booking, BookingStatus } from '../../types';
+import type { Booking, BookingStatus, Invite, InviteStatus } from '../../types';
+import { formatDateShort } from '../../lib/dateFormat';
 
-type TabKey = 'active' | 'pending' | 'completed';
+type TabKey = 'invites' | 'active' | 'past';
 
-const tabs: { key: TabKey; label: string }[] = [
+const BOOKING_TABS: { key: TabKey; label: string }[] = [
+  { key: 'invites', label: 'Invites' },
   { key: 'active', label: 'Active' },
-  { key: 'pending', label: 'Pending' },
-  { key: 'completed', label: 'Completed' },
+  { key: 'past', label: 'Past' },
 ];
+
+function InviteCard({
+  invite,
+  onAccept,
+  onDecline,
+  acting,
+}: {
+  invite: Invite;
+  onAccept: (id: string) => void;
+  onDecline: (id: string) => void;
+  acting: boolean;
+}) {
+  const { colors } = useTheme();
+  const haptics = useHaptics();
+  const isPending = invite.status === 'pending';
+
+  const statusColor =
+    invite.status === 'accepted'
+      ? colors.success
+      : invite.status === 'declined'
+      ? colors.error
+      : colors.warning;
+  const statusBg =
+    invite.status === 'accepted'
+      ? colors.successLight
+      : invite.status === 'declined'
+      ? colors.cancelledLight
+      : colors.pendingLight;
+  const statusLabel =
+    invite.status === 'accepted' ? 'Accepted' : invite.status === 'declined' ? 'Declined' : 'Pending';
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(350)}
+      style={[styles.inviteCard, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}
+    >
+      {/* Header */}
+      <View style={styles.inviteCardHeader}>
+        <Avatar
+          uri={invite.business?.logo_url ?? invite.business?.image_url ?? null}
+          name={invite.business?.business_name ?? 'Business'}
+          size={44}
+        />
+        <View style={styles.inviteCardInfo}>
+          <Text style={[styles.inviteBusinessName, { color: colors.text }]} numberOfLines={1}>
+            {invite.business?.business_name ?? 'Business'}
+          </Text>
+          <Text style={[styles.inviteListingTitle, { color: colors.textSecondary }]} numberOfLines={1}>
+            {invite.listing?.title ?? 'Listing'}
+          </Text>
+        </View>
+        <View style={[styles.inviteStatusBadge, { backgroundColor: statusBg }]}>
+          <Text style={[styles.inviteStatusText, { color: statusColor }]}>{statusLabel}</Text>
+        </View>
+      </View>
+
+      {/* Meta */}
+      {invite.listing && (
+        <View style={styles.inviteMeta}>
+          <View style={styles.inviteMetaItem}>
+            <DollarSign size={13} color={colors.textTertiary} strokeWidth={2} />
+            <Text style={[styles.inviteMetaText, { color: colors.textSecondary }]}>
+              ${invite.listing.pay_min}–${invite.listing.pay_max}
+            </Text>
+          </View>
+          <View style={styles.inviteMetaItem}>
+            <MapPin size={13} color={colors.textTertiary} strokeWidth={2} />
+            <Text style={[styles.inviteMetaText, { color: colors.textSecondary }]} numberOfLines={1}>
+              {invite.listing.location}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Message */}
+      {!!invite.message && (
+        <Text style={[styles.inviteMessage, { color: colors.textSecondary }]} numberOfLines={3}>
+          "{invite.message}"
+        </Text>
+      )}
+
+      {/* Date */}
+      <Text style={[styles.inviteDate, { color: colors.textTertiary }]}>
+        Invited {formatDateShort(invite.created_at)}
+      </Text>
+
+      {/* Actions */}
+      {isPending && (
+        <View style={styles.inviteActions}>
+          <PressableScale
+            onPress={() => { haptics.tap(); onDecline(invite.id); }}
+            disabled={acting}
+            scaleValue={0.96}
+            accessibilityRole="button"
+            accessibilityLabel="Decline invite"
+            style={[
+              styles.inviteActionBtn,
+              { borderColor: colors.border, backgroundColor: colors.surface, opacity: acting ? 0.5 : 1 },
+            ]}
+          >
+            <XCircle size={16} color={colors.error} strokeWidth={2} />
+            <Text style={[styles.inviteActionText, { color: colors.error }]}>Decline</Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => { haptics.confirm(); onAccept(invite.id); }}
+            disabled={acting}
+            scaleValue={0.96}
+            accessibilityRole="button"
+            accessibilityLabel="Accept invite"
+            style={[
+              styles.inviteActionBtn,
+              { borderColor: colors.primary, backgroundColor: colors.primary, opacity: acting ? 0.5 : 1 },
+            ]}
+          >
+            <CheckCircle size={16} color={colors.onPrimary} strokeWidth={2} />
+            <Text style={[styles.inviteActionText, { color: colors.onPrimary }]}>Accept</Text>
+          </PressableScale>
+        </View>
+      )}
+    </Animated.View>
+  );
+}
 
 function BookingsSkeleton() {
   return (
@@ -212,7 +337,7 @@ function BatchActionBar({
       </View>
 
       <View style={styles.batchActions}>
-        {activeTab !== 'completed' && (
+        {activeTab !== 'past' && (
           <PressableScale
             onPress={handleComplete}
             disabled={selectedCount === 0 || loading}
@@ -231,7 +356,7 @@ function BatchActionBar({
             <Text style={styles.batchButtonText}>Complete</Text>
           </PressableScale>
         )}
-        {activeTab !== 'completed' && (
+        {activeTab !== 'past' && (
           <PressableScale
             onPress={handleReject}
             disabled={selectedCount === 0 || loading}
@@ -261,11 +386,29 @@ export default function BookingsScreen() {
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
   const { bookings, user, bookingsLoading, bookingsError, fetchBookings, updateBooking } = useStore();
-  const [activeTab, setActiveTab] = useState<TabKey>('active');
+  const [activeTab, setActiveTab] = useState<TabKey>('invites');
   const [refreshing, setRefreshing] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
+  const [invites, setInvites] = useState<import('../../types').Invite[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [actingInviteId, setActingInviteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (user.role !== 'creator') return;
+    setInvitesLoading(true);
+    const fetchInvites = async () => {
+      const profile = await api.getCreators().then((cs) => cs.find((c) => c.user_id === user.id));
+      if (profile) {
+        const list = await api.getCreatorInvites(profile.id);
+        setInvites(list);
+      }
+      setInvitesLoading(false);
+    };
+    fetchInvites();
+  }, [user?.id, user?.role]);
 
   const handleRefresh = useCallback(async () => {
     haptics.tap();
@@ -281,24 +424,23 @@ export default function BookingsScreen() {
     switch (activeTab) {
       case 'active':
         return bookings.filter(
-          (b) => b.status === 'active' || b.status === 'accepted'
+          (b) => b.status === 'active' || b.status === 'accepted' || b.status === 'pending'
         );
-      case 'pending':
-        return bookings.filter((b) => b.status === 'pending');
-      case 'completed':
+      case 'past':
         return bookings.filter(
           (b) => b.status === 'completed' || b.status === 'cancelled'
         );
+      default:
+        return [];
     }
   }, [bookings, activeTab]);
 
   const counts = useMemo(
     () => ({
       active: bookings.filter(
-        (b) => b.status === 'active' || b.status === 'accepted'
+        (b) => b.status === 'active' || b.status === 'accepted' || b.status === 'pending'
       ).length,
-      pending: bookings.filter((b) => b.status === 'pending').length,
-      completed: bookings.filter(
+      past: bookings.filter(
         (b) => b.status === 'completed' || b.status === 'cancelled'
       ).length,
     }),
@@ -520,24 +662,28 @@ export default function BookingsScreen() {
     () => (
       <EmptyState
         icon={
-          activeTab === 'completed'
+          activeTab === 'past'
             ? 'checkmark-done-outline'
-            : 'calendar-outline'
+            : activeTab === 'invites'
+              ? 'mail-outline'
+              : 'calendar-outline'
         }
         title={
           activeTab === 'active'
             ? 'No active bookings'
-            : activeTab === 'pending'
-              ? 'No pending bookings'
-              : 'No completed bookings yet'
+            : activeTab === 'invites'
+              ? 'No invites yet'
+              : 'No past bookings yet'
         }
         body={
-          activeTab === 'completed'
+          activeTab === 'past'
             ? "Completed work shows up here — it's your history you can be proud of."
-            : 'Browse open listings and apply to the ones that fit.'
+            : activeTab === 'invites'
+              ? 'Businesses will invite you to collabs here.'
+              : 'Browse open listings and apply to the ones that fit.'
         }
-        ctaLabel={activeTab !== 'completed' ? 'Browse listings' : undefined}
-        onPress={activeTab !== 'completed' ? () => router.push('/(tabs)/search') : undefined}
+        ctaLabel={activeTab !== 'past' ? 'Browse listings' : undefined}
+        onPress={activeTab !== 'past' ? () => router.push('/(tabs)/search') : undefined}
       />
     ),
     [activeTab, router]
@@ -550,7 +696,7 @@ export default function BookingsScreen() {
           <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">Bookings</Text>
         </View>
         <View style={styles.tabsRow}>
-          {tabs.map((tab) => (
+          {BOOKING_TABS.map((tab) => (
             <Skeleton key={tab.key} width={90} height={36} borderRadius={BorderRadius.full} />
           ))}
         </View>
@@ -592,7 +738,7 @@ export default function BookingsScreen() {
     );
   }
 
-  const canBatch = activeTab !== 'completed' && filteredBookings.length > 0;
+  const canBatch = activeTab !== 'past' && filteredBookings.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -632,37 +778,66 @@ export default function BookingsScreen() {
       </View>
 
       <View style={styles.tabsRow} accessibilityRole="tablist">
-        {tabs.map((tab) => (
+        {BOOKING_TABS.map((tab) => (
           <TabButton
             key={tab.key}
             label={tab.label}
             selected={activeTab === tab.key}
             onPress={() => handleTabChange(tab.key)}
-            count={counts[tab.key]}
+            count={tab.key === 'invites' ? invites.filter((i) => i.status === 'pending').length : (counts as any)[tab.key]}
           />
         ))}
       </View>
 
-      <FlatList
-        data={filteredBookings}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={renderEmpty}
-        contentContainerStyle={[
-          styles.listContent,
-          selectMode && { paddingBottom: Layout.tabBarHeight + 140 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        extraData={selectedIds}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      />
+      {activeTab === 'invites' ? (
+        <FlatList
+          data={invites}
+          renderItem={({ item }) => (
+            <InviteCard
+              invite={item}
+              onAccept={async (id) => {
+                setActingInviteId(id);
+                const { error } = await (api as any).supabase.from('invites').update({ status: 'accepted' }).eq('id', id);
+                if (!error) setInvites((prev) => prev.map((i) => i.id === id ? { ...i, status: 'accepted' as any } : i));
+                setActingInviteId(null);
+              }}
+              onDecline={async (id) => {
+                setActingInviteId(id);
+                const { error } = await (api as any).supabase.from('invites').update({ status: 'declined' }).eq('id', id);
+                if (!error) setInvites((prev) => prev.map((i) => i.id === id ? { ...i, status: 'declined' as any } : i));
+                setActingInviteId(null);
+              }}
+              acting={actingInviteId === item.id}
+            />
+          )}
+          keyExtractor={(item) => item.id}
+          ListEmptyComponent={renderEmpty}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={invitesLoading} onRefresh={() => {}} tintColor={colors.primary} />}
+        />
+      ) : (
+        <FlatList
+          data={filteredBookings}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          ListEmptyComponent={renderEmpty}
+          contentContainerStyle={[
+            styles.listContent,
+            selectMode && { paddingBottom: Layout.tabBarHeight + 140 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          extraData={selectedIds}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        />
+      )}
 
       {selectMode && (
         <BatchActionBar
@@ -852,4 +1027,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+
+  // ── InviteCard styles ──────────────────────────────────────────────────────
+  inviteCard: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  inviteCardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  inviteCardInfo: { flex: 1 },
+  inviteBusinessName: { ...Typography.subheadline, fontWeight: '600' },
+  inviteListingTitle: { ...Typography.caption1, marginTop: 2 },
+  inviteStatusBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.full },
+  inviteStatusText: { ...Typography.caption2, fontWeight: '600' },
+  inviteMeta: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
+  inviteMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  inviteMetaText: { ...Typography.caption1 },
+  inviteMessage: { ...Typography.footnote, marginTop: Spacing.sm, fontStyle: 'italic', lineHeight: 18 },
+  inviteDate: { ...Typography.caption2, marginTop: Spacing.xs },
+  inviteActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+  inviteActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: BorderRadius.md, borderWidth: 1, minHeight: 44 },
+  inviteActionText: { ...Typography.subheadline, fontWeight: '600' },
 });

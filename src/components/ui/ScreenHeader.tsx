@@ -11,6 +11,7 @@ import { Spacing } from '../../constants/theme';
 
 interface ScreenHeaderProps {
   title?: string;
+  titleNode?: React.ReactNode;
   onBack?: () => void;
   right?: React.ReactNode;
   transparent?: boolean;
@@ -20,6 +21,7 @@ interface ScreenHeaderProps {
 
 export function ScreenHeader({
   title,
+  titleNode,
   onBack,
   right,
   transparent = false,
@@ -71,8 +73,8 @@ export function ScreenHeader({
           ) : null}
         </View>
 
-        <View style={styles.titleWrap} pointerEvents="none">
-          {title ? (
+        <View style={styles.titleWrap}>
+          {titleNode ?? (title ? (
             <ThemedText
               variant="headline"
               numberOfLines={1}
@@ -80,7 +82,7 @@ export function ScreenHeader({
             >
               {title}
             </ThemedText>
-          ) : null}
+          ) : null)}
         </View>
 
         <View style={[styles.side, styles.sideRight]}>{right}</View>

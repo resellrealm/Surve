@@ -45,6 +45,7 @@ import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
 import { Avatar } from '../../components/ui/Avatar';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { VerifiedBadge } from '../../components/ui/VerifiedBadge';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { ThemedText } from '../../components/ui/ThemedText';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -252,7 +253,7 @@ function ReactionPill({
           trigger={particleProgress}
         />
       ))}
-      <Text style={styles.reactionPillEmoji}>{iconName}</Text>
+      <Text allowFontScaling maxFontSizeMultiplier={1.4} style={styles.reactionPillEmoji}>{iconName}</Text>
       {users.length > 1 && (
         <ThemedText
           variant="caption2"
@@ -351,7 +352,7 @@ function ReactionPickerItem({
           trigger={particleProgress}
         />
       ))}
-      <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
+      <Text allowFontScaling maxFontSizeMultiplier={1.4} style={styles.reactionPickerEmoji}>{emoji}</Text>
     </AnimatedPressable>
   );
 }
@@ -421,6 +422,8 @@ function HighlightedText({
         p.match ? (
           <Text
             key={i}
+            allowFontScaling
+            maxFontSizeMultiplier={1.5}
             style={{
               backgroundColor: colors.warning,
               color: '#000',
@@ -430,7 +433,7 @@ function HighlightedText({
             {p.text}
           </Text>
         ) : (
-          <Text key={i}>{p.text}</Text>
+          <Text key={i} allowFontScaling maxFontSizeMultiplier={1.5}>{p.text}</Text>
         )
       )}
     </ThemedText>
@@ -1146,7 +1149,23 @@ export default function ChatDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title={conversation.participant_name}
+        titleNode={
+          <View style={styles.chatHeaderTitle}>
+            <ThemedText
+              variant="headline"
+              numberOfLines={1}
+              style={[styles.chatHeaderName, { color: colors.text }]}
+            >
+              {conversation.participant_name}
+            </ThemedText>
+            {conversation.participant_verified && (
+              <VerifiedBadge
+                verifiedAt={conversation.participant_verified_at ?? undefined}
+                size="sm"
+              />
+            )}
+          </View>
+        }
         right={
           <View style={styles.headerRight}>
             <PressableScale
@@ -1423,6 +1442,17 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  chatHeaderTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    maxWidth: '100%',
+  },
+  chatHeaderName: {
+    ...Typography.headline,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
   messagesList: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,

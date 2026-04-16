@@ -625,10 +625,8 @@ export function BusinessDashboard() {
   );
 
   const handleApplicationPress = useCallback(
-    (application: Application) => {
-      if (application.creator_id) {
-        router.push(`/(creator)/${application.creator_id}`);
-      }
+    (_application: Application) => {
+      router.push('/(business)/applicants');
     },
     [router],
   );
@@ -819,7 +817,7 @@ export function BusinessDashboard() {
             <SectionHeader
               title={`Pending Applications (${pendingApplications.length})`}
               action="View all"
-              onAction={() => router.push('/(tabs)/search')}
+              onAction={() => router.push('/(business)/applicants')}
             />
             {pendingApplications.slice(0, 4).map((application) => (
               <View key={application.id} style={{ paddingHorizontal: Spacing.lg }}>

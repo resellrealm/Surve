@@ -71,6 +71,7 @@ import { Avatar } from '../../components/ui/Avatar';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { ThemedText } from '../../components/ui/ThemedText';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
+import { VerifiedBadge } from '../../components/ui/VerifiedBadge';
 import { formatFollowers } from '../../components/listing/RequirementTag';
 import {
   AnalyticsChart,
@@ -414,6 +415,14 @@ function RequirementsCard({ listing }: { listing: Listing }) {
     },
   ];
 
+  // Build niche chips from category + platform
+  const nicheChips: string[] = [
+    listing.category.charAt(0).toUpperCase() + listing.category.slice(1),
+  ];
+  if (listing.platform === 'instagram') nicheChips.push('Instagram');
+  else if (listing.platform === 'tiktok') nicheChips.push('TikTok');
+  else if (listing.platform === 'both') nicheChips.push('Instagram', 'TikTok');
+
   return (
     <Card style={reqStyles.card}>
       {rows.map(({ icon: Icon, label, value }, i) => (
@@ -431,11 +440,32 @@ function RequirementsCard({ listing }: { listing: Listing }) {
               </ThemedText>
             </View>
           </View>
-          {i < rows.length - 1 && (
-            <View style={[reqStyles.divider, { backgroundColor: colors.borderLight }]} />
-          )}
+          <View style={[reqStyles.divider, { backgroundColor: colors.borderLight }]} />
         </React.Fragment>
       ))}
+      {/* Niches */}
+      <View style={reqStyles.row}>
+        <View style={[reqStyles.iconWrap, { backgroundColor: colors.surfaceSecondary }]}>
+          <Hash size={16} color={colors.primary} strokeWidth={2} />
+        </View>
+        <View style={reqStyles.texts}>
+          <ThemedText variant="caption1" style={{ color: colors.textSecondary }}>
+            Niches
+          </ThemedText>
+          <View style={reqStyles.nichesRow}>
+            {nicheChips.map((niche) => (
+              <View
+                key={niche}
+                style={[reqStyles.nicheChip, { backgroundColor: colors.primaryLight + '18', borderColor: colors.primaryLight + '30' }]}
+              >
+                <ThemedText variant="caption2" style={[reqStyles.nicheChipText, { color: colors.primary }]}>
+                  {niche}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
     </Card>
   );
 }
@@ -468,6 +498,23 @@ const reqStyles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 52,
+  },
+  nichesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: 2,
+  },
+  nicheChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+  },
+  nicheChipText: {
+    ...Typography.caption2,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });
 
@@ -679,9 +726,7 @@ function BusinessMiniCard({
           >
             {biz.business_name}
           </ThemedText>
-          {biz.verified && (
-            <CheckCircle size={16} color={colors.primary} fill={colors.primary} strokeWidth={2} />
-          )}
+          {biz.verified && <VerifiedBadge size="sm" />}
         </View>
         <View style={bizStyles.metaRow}>
           <MapPin size={12} color={colors.textSecondary} strokeWidth={2} />
@@ -1432,22 +1477,13 @@ export default function ListingDetailScreen() {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
   const [reportVisible, setReportVisible] = useState(false);
-  const [applyVisible, setApplyVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  // Creator profile (for apply modal)
-  const [myCreator, setMyCreator] = useState<Creator | null>(null);
 
   useEffect(() => {
     if (!isBusiness || !id) return;
     setAnalyticsLoading(true);
     fetchListingAnalytics(id).then(setAnalytics).catch(() => {}).finally(() => setAnalyticsLoading(false));
   }, [isBusiness, id]);
-
-  useEffect(() => {
-    if (!isCreator || !user) return;
-    api.getCreatorProfile(user.id, user.id).then(setMyCreator).catch(() => {});
-  }, [isCreator, user]);
 
   const openGallery = useCallback((index = 0) => {
     haptics.tap();
@@ -1458,11 +1494,11 @@ export default function ListingDetailScreen() {
   const handleApply = useCallback(() => {
     haptics.success();
     if (isCreator) {
-      setApplyVisible(true);
+      router.push(`/(application)/${id}`);
     } else {
       router.push('/(listing)/create');
     }
-  }, [isCreator, router, haptics]);
+  }, [isCreator, router, haptics, id]);
 
   const handleSimilarPress = useCallback((l: Listing) => {
     router.push(`/(listing)/${l.id}`);
@@ -1617,6 +1653,19 @@ export default function ListingDetailScreen() {
             <ThemedText variant="title1" style={[styles.title, { color: colors.text }]} accessibilityRole="header">
               {listing.title}
             </ThemedText>
+
+            {/* Business attribution */}
+            <PressableScale
+              onPress={handleBusinessPress}
+              style={styles.bizAttribution}
+              accessibilityRole="button"
+              accessibilityLabel={`By ${listing.business.business_name}`}
+            >
+              <ThemedText variant="subheadline" style={[styles.bizAttrName, { color: colors.primary }]}>
+                {listing.business.business_name}
+              </ThemedText>
+              {listing.business.verified && <VerifiedBadge size="sm" />}
+            </PressableScale>
 
             {/* Location */}
             <View style={styles.locationRow}>
@@ -1975,13 +2024,6 @@ export default function ListingDetailScreen() {
         onClose={() => setGalleryOpen(false)}
       />
 
-      <ApplicationModal
-        visible={applyVisible}
-        onClose={() => setApplyVisible(false)}
-        listing={listing}
-        creator={myCreator}
-      />
-
       {listing && (
         <ReportModal
           visible={reportVisible}
@@ -2114,6 +2156,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+  },
+  bizAttribution: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+    minHeight: 28,
+  },
+  bizAttrName: {
+    ...Typography.subheadline,
+    fontWeight: '600',
   },
   deadlineRow: {
     flexDirection: 'row',

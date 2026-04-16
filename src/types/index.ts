@@ -120,9 +120,14 @@ export interface Business {
   logo_url?: string | null;
   cover_url?: string | null;
   brand_story?: string | null;
+  values?: string[] | null;
   cuisine_tags?: string[] | null;
+  category_tags?: string[] | null;
   social_handles?: Record<string, string> | null;
+  website_url?: string | null;
   press_kit_url?: string | null;
+  locations?: Array<{ name: string; address: string; lat: number; lng: number }> | null;
+  past_creator_collabs?: Array<Record<string, unknown>> | null;
   founded_year?: number | null;
   employee_count_range?: string | null;
 }
@@ -258,6 +263,8 @@ export interface Conversation {
   participant_name: string;
   participant_avatar: string | null;
   participant_role: UserRole;
+  participant_verified?: boolean;
+  participant_verified_at?: string | null;
   last_message: string;
   last_message_at: string;
   unread_count: number;
@@ -272,6 +279,7 @@ export interface Review {
   reply_text?: string | null;
   replied_at?: string | null;
   replied_by?: string | null;
+  reply_name?: string | null;
   reviewer_name: string;
   reviewer_avatar: string | null;
   target_id: string;
@@ -283,6 +291,8 @@ export interface Review {
   photos?: string[] | null;
   verified_booking_id?: string | null;
   reviewer_role?: 'creator' | 'business' | null;
+  reviewer_verified?: boolean;
+  reviewer_verified_at?: string | null;
 }
 
 // ─── Filter ──────────────────────────────────────────────────────────────────
@@ -475,8 +485,24 @@ export interface Application {
   status: ApplicationStatus;
   proposed_deliverables: Record<string, unknown>;
   fit_score?: number | null;
+  source?: 'invite' | 'application';
   created_at: string;
   updated_at: string;
   creator?: Creator;
   listing?: Listing;
+}
+
+export type InviteStatus = 'pending' | 'accepted' | 'declined';
+
+export interface Invite {
+  id: string;
+  listing_id: string;
+  creator_id: string;
+  business_id: string;
+  message: string;
+  status: InviteStatus;
+  created_at: string;
+  updated_at: string;
+  listing?: Listing;
+  business?: Business;
 }

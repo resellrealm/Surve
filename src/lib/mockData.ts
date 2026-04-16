@@ -10,6 +10,7 @@ import type {
   Message,
   Application,
   ListingAnalyticsSummary,
+  Invite,
 } from '../types';
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -1527,6 +1528,45 @@ export const mockApplications: Application[] = [
     updated_at: '2026-04-10T09:00:00Z',
     creator: mockCreators[5],
     listing: mockListings[1],
+  },
+];
+
+export const mockInvites: Invite[] = [
+  {
+    id: 'invite-1',
+    listing_id: 'listing-2',
+    creator_id: 'creator-1',
+    business_id: 'biz-2',
+    message: "Hi Sarah! We love your rooftop content and think you'd be perfect for our Sunset Cocktail Reel campaign. Would love to have you in.",
+    status: 'pending',
+    created_at: '2026-04-15T10:30:00Z',
+    updated_at: '2026-04-15T10:30:00Z',
+    listing: mockListings[1],
+    business: mockBusinesses[1],
+  },
+  {
+    id: 'invite-2',
+    listing_id: 'listing-3',
+    creator_id: 'creator-1',
+    business_id: 'biz-3',
+    message: "We've been following your work and think your aesthetic is a great fit for our craft cocktail series.",
+    status: 'pending',
+    created_at: '2026-04-14T16:00:00Z',
+    updated_at: '2026-04-14T16:00:00Z',
+    listing: mockListings[2],
+    business: mockBusinesses[2],
+  },
+  {
+    id: 'invite-3',
+    listing_id: 'listing-1',
+    creator_id: 'creator-1',
+    business_id: 'biz-1',
+    message: "Your luxury hotel content is exactly what we're looking for. Interested in our Luxury Suite Experience collab?",
+    status: 'accepted',
+    created_at: '2026-04-10T09:00:00Z',
+    updated_at: '2026-04-11T14:00:00Z',
+    listing: mockListings[0],
+    business: mockBusinesses[0],
   },
 ];
 

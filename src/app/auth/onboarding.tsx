@@ -134,7 +134,11 @@ export default function OnboardingScreen() {
     setLoading(false);
 
     if (success) {
-      router.replace('/(tabs)');
+      if (selectedRole === 'creator') {
+        router.replace('/(creator-onboarding)/');
+      } else {
+        router.replace('/(business-onboarding)/');
+      }
     } else {
       toast.error('Sign Up Failed: Could not create your account. The email may already be in use.');
     }
