@@ -24,6 +24,7 @@
     "@supabase/supabase-js": "^2.101.1",
     "date-fns": "^4.1.0",
     "expo": "~55.0.6",
+    "expo-av": "^16.0.8",
     "expo-blur": "~55.0.9",
     "expo-clipboard": "~55.0.8",
     "expo-constants": "~55.0.7",

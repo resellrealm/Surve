@@ -1,0 +1,126 @@
+import { ExpoConfig, ConfigContext } from "expo/config";
+
+const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID;
+
+if (!EAS_PROJECT_ID) {
+  console.warn(
+    "⚠️  EAS_PROJECT_ID is not set. OTA updates will not work.\n" +
+      "   Run `eas project:init` or copy the ID from https://expo.dev and add it to .env"
+  );
+}
+
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  ...config,
+  name: "Surve",
+  slug: "surve",
+  version: "1.0.0",
+  orientation: "portrait",
+  icon: "./assets/icon.png",
+  userInterfaceStyle: "automatic",
+  scheme: "surve",
+  splash: {
+    image: "./assets/splash-icon.png",
+    resizeMode: "contain",
+    backgroundColor: "#111d4a",
+  },
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: "com.surve.creator",
+    config: {
+      usesNonExemptEncryption: false,
+    },
+    associatedDomains: ["applinks:surve.app", "applinks:www.surve.app"],
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription:
+        "Surve needs camera access so you can add listing photos and attach proof of delivered content.",
+      NSPhotoLibraryUsageDescription:
+        "Surve needs photo library access so you can pick a profile picture, listing photos, or screenshots as evidence.",
+      NSPhotoLibraryAddUsageDescription:
+        "Surve needs permission to save exported data (JSON/CSV) to your photo library if you choose to.",
+      NSFaceIDUsageDescription:
+        "Surve uses Face ID to confirm sensitive actions like deleting your account or issuing a refund.",
+      NSUserTrackingUsageDescription:
+        "This won't be used — we don't track you across apps. Shown only if a future version enables analytics.",
+    },
+  },
+  android: {
+    adaptiveIcon: {
+      backgroundColor: "#111d4a",
+      foregroundImage: "./assets/adaptive-icon.png",
+    },
+    package: "com.surve.creator",
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [
+          { scheme: "https", host: "surve.app", pathPrefix: "/booking" },
+          { scheme: "https", host: "surve.app", pathPrefix: "/creator" },
+          { scheme: "https", host: "surve.app", pathPrefix: "/listing" },
+          { scheme: "https", host: "surve.app", pathPrefix: "/chat" },
+          { scheme: "https", host: "surve.app", pathPrefix: "/review" },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ],
+    permissions: [
+      "CAMERA",
+      "READ_EXTERNAL_STORAGE",
+      "WRITE_EXTERNAL_STORAGE",
+      "USE_BIOMETRIC",
+      "USE_FINGERPRINT",
+      "POST_NOTIFICATIONS",
+    ],
+  },
+  runtimeVersion: {
+    policy: "appVersion",
+  },
+  updates: {
+    url: EAS_PROJECT_ID
+      ? `https://u.expo.dev/${EAS_PROJECT_ID}`
+      : "https://u.expo.dev/YOUR_EAS_PROJECT_ID",
+    enabled: true,
+    fallbackToCacheTimeout: 0,
+    checkAutomatically: "ON_LOAD" as const,
+  },
+  web: {
+    favicon: "./assets/favicon.png",
+  },
+  extra: {
+    eas: {
+      projectId: EAS_PROJECT_ID ?? "YOUR_EAS_PROJECT_ID",
+    },
+  },
+  plugins: [
+    "expo-updates",
+    ["expo-router", { root: "./src/app" }],
+    "expo-secure-store",
+    "expo-font",
+    "expo-haptics",
+    [
+      "expo-notifications",
+      {
+        icon: "./assets/icon.png",
+        color: "#2c428f",
+        defaultChannel: "default",
+        sounds: [],
+        enableBackgroundRemoteNotifications: true,
+      },
+    ],
+    "expo-image-picker",
+    "expo-local-authentication",
+    [
+      "expo-splash-screen",
+      {
+        backgroundColor: "#111d4a",
+        image: "./assets/splash-icon.png",
+        imageWidth: 200,
+      },
+    ],
+    "@sentry/react-native/expo",
+  ],
+  experiments: {
+    typedRoutes: true,
+  },
+});
