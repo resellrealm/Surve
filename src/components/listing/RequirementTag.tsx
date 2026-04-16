@@ -1,8 +1,9 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Users, TrendingUp, Camera } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { Typography, Spacing, BorderRadius } from '../../constants/theme';
+import { ThemedText } from '../ui/ThemedText';
+import { Spacing, BorderRadius, Typography } from '../../constants/theme';
 
 type TagType = 'followers' | 'engagement' | 'content';
 
@@ -38,7 +39,7 @@ export function RequirementTag({ type, value }: RequirementTagProps) {
       ]}
     >
       <Icon size={14} color={colors.primary} strokeWidth={2} />
-      <Text style={[styles.text, { color: colors.text }]}>{value}</Text>
+      <ThemedText variant="caption1" style={[styles.text, { color: colors.text }]}>{value}</ThemedText>
     </View>
   );
 }

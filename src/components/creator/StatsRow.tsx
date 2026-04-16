@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { Typography, Spacing } from '../../constants/theme';
+import { ThemedText } from '../ui/ThemedText';
+import { Spacing } from '../../constants/theme';
 
 interface StatsRowProps {
   instagramFollowers: number;
@@ -27,10 +28,10 @@ function StatItem({
 }) {
   return (
     <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.statItem}>
-      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: colors.textTertiary }]}>
+      <ThemedText variant="headline" style={[styles.statValue, { color: colors.text }]}>{value}</ThemedText>
+      <ThemedText variant="caption2" style={[styles.statLabel, { color: colors.textTertiary }]}>
         {label}
-      </Text>
+      </ThemedText>
     </View>
   );
 }
@@ -79,11 +80,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    ...Typography.headline,
     fontWeight: '700',
   },
   statLabel: {
-    ...Typography.caption2,
     marginTop: Spacing.xxs,
   },
   divider: {

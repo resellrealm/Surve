@@ -6,8 +6,8 @@ import {
   Pressable,
   Dimensions,
   Image,
-  StatusBar,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -114,7 +114,7 @@ export default function WelcomeScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar style="light" />
 
       <AnimatedGradient scrollX={scrollX} />
       <FloatingOrbs scrollX={scrollX} />

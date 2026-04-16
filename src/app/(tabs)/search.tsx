@@ -17,7 +17,7 @@ import { CreatorCard } from '../../components/creator/CreatorCard';
 import { ListingFilterChips } from '../../components/listing/ListingFilters';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { Skeleton, ListingCardSkeleton } from '../../components/ui/Skeleton';
-import { platforms, categories, followerRanges, engagementRanges } from '../../constants/filters';
+import { platforms, categories, followerRanges, engagementRanges, payRanges } from '../../constants/filters';
 import * as api from '../../lib/api';
 import { Typography, Spacing, BorderRadius, Layout } from '../../constants/theme';
 import type { Listing, Creator, Platform as PlatformType } from '../../types';
@@ -260,6 +260,12 @@ export default function SearchScreen() {
   const [selectedEngagement, setSelectedEngagement] = useState(
     savedFilters.engagement ?? 'all'
   );
+  const [selectedPayRange, setSelectedPayRange] = useState(
+    savedFilters.payRange ?? 'all'
+  );
+  const [locationQuery, setLocationQuery] = useState(
+    savedFilters.location ?? ''
+  );
 
   // Persist any filter change back to the session store so navigating away
   // and back preserves state (S122).
@@ -272,6 +278,8 @@ export default function SearchScreen() {
       engagement: selectedEngagement,
       sortBy,
       mode: searchMode,
+      payRange: selectedPayRange,
+      location: locationQuery,
     });
   }, [
     searchQuery,
@@ -281,6 +289,8 @@ export default function SearchScreen() {
     selectedEngagement,
     sortBy,
     searchMode,
+    selectedPayRange,
+    locationQuery,
     setSavedFilters,
   ]);
 
@@ -320,6 +330,8 @@ export default function SearchScreen() {
   const [draftCategory, setDraftCategory] = useState(selectedCategory);
   const [draftFollowerRange, setDraftFollowerRange] = useState(selectedFollowerRange);
   const [draftEngagement, setDraftEngagement] = useState(selectedEngagement);
+  const [draftPayRange, setDraftPayRange] = useState(selectedPayRange);
+  const [draftLocation, setDraftLocation] = useState(locationQuery);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -327,8 +339,10 @@ export default function SearchScreen() {
     if (selectedCategory !== 'all') count++;
     if (selectedFollowerRange !== 'all') count++;
     if (selectedEngagement !== 'all') count++;
+    if (selectedPayRange !== 'all') count++;
+    if (locationQuery.trim()) count++;
     return count;
-  }, [selectedPlatform, selectedCategory, selectedFollowerRange, selectedEngagement]);
+  }, [selectedPlatform, selectedCategory, selectedFollowerRange, selectedEngagement, selectedPayRange, locationQuery]);
 
   const hasActiveFilters = activeFilterCount > 0 || searchQuery.trim().length > 0 || sortBy !== 'newest';
 
@@ -339,6 +353,8 @@ export default function SearchScreen() {
     setSelectedCategory('all');
     setSelectedFollowerRange('all');
     setSelectedEngagement('all');
+    setSelectedPayRange('all');
+    setLocationQuery('');
     setSortBy('newest');
     setShowSortOptions(false);
     resetSavedFilters();
@@ -350,8 +366,10 @@ export default function SearchScreen() {
     setDraftCategory(selectedCategory);
     setDraftFollowerRange(selectedFollowerRange);
     setDraftEngagement(selectedEngagement);
+    setDraftPayRange(selectedPayRange);
+    setDraftLocation(locationQuery);
     filterSheetRef.current?.snapToIndex(0);
-  }, [haptics, selectedPlatform, selectedCategory, selectedFollowerRange, selectedEngagement]);
+  }, [haptics, selectedPlatform, selectedCategory, selectedFollowerRange, selectedEngagement, selectedPayRange, locationQuery]);
 
   const applyFilters = useCallback(() => {
     haptics.confirm();
@@ -359,7 +377,9 @@ export default function SearchScreen() {
     setSelectedCategory(draftCategory);
     setSelectedFollowerRange(draftFollowerRange);
     setSelectedEngagement(draftEngagement);
-  }, [haptics, draftPlatform, draftCategory, draftFollowerRange, draftEngagement]);
+    setSelectedPayRange(draftPayRange);
+    setLocationQuery(draftLocation);
+  }, [haptics, draftPlatform, draftCategory, draftFollowerRange, draftEngagement, draftPayRange, draftLocation]);
 
   const handleFilterSheetChange = useCallback((index: number) => {
     if (index === -1) {
@@ -374,6 +394,8 @@ export default function SearchScreen() {
     setDraftCategory('all');
     setDraftFollowerRange('all');
     setDraftEngagement('all');
+    setDraftPayRange('all');
+    setDraftLocation('');
     // Also reset all local filter state so closing the sheet doesn't
     // re-sync stale values back to the store.
     setSearchQuery('');
@@ -381,6 +403,8 @@ export default function SearchScreen() {
     setSelectedCategory('all');
     setSelectedFollowerRange('all');
     setSelectedEngagement('all');
+    setSelectedPayRange('all');
+    setLocationQuery('');
     setSortBy('newest');
     setShowSortOptions(false);
     resetSavedFilters();
@@ -435,7 +459,15 @@ export default function SearchScreen() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
-      if (!searchQuery.trim() && selectedPlatform === 'all' && selectedCategory === 'all') {
+      const payPreset = payRanges.find((r) => r.key === selectedPayRange);
+      const hasAnyFilter =
+        searchQuery.trim() ||
+        selectedPlatform !== 'all' ||
+        selectedCategory !== 'all' ||
+        selectedPayRange !== 'all' ||
+        locationQuery.trim();
+
+      if (!hasAnyFilter) {
         setSearchResults(null);
         return;
       }
@@ -445,6 +477,9 @@ export default function SearchScreen() {
           platform: selectedPlatform,
           category: selectedCategory,
           sortBy,
+          payMin: payPreset?.min ?? null,
+          payMax: payPreset?.max ?? null,
+          location: locationQuery,
         });
         setSearchResults(results);
       } finally {
@@ -455,7 +490,7 @@ export default function SearchScreen() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery, selectedPlatform, selectedCategory, sortBy]);
+  }, [searchQuery, selectedPlatform, selectedCategory, sortBy, selectedPayRange, locationQuery]);
 
   const handleRefresh = useCallback(async () => {
     haptics.tap();
@@ -475,6 +510,19 @@ export default function SearchScreen() {
       if (selectedCategory !== 'all') {
         results = results.filter((l) => l.category === selectedCategory);
       }
+      const payPreset = payRanges.find((r) => r.key === selectedPayRange);
+      if (payPreset && selectedPayRange !== 'all') {
+        if (payPreset.min != null) {
+          results = results.filter((l) => l.pay_max >= (payPreset.min as number));
+        }
+        if (payPreset.max != null && payPreset.max > 0) {
+          results = results.filter((l) => l.pay_min <= (payPreset.max as number));
+        }
+      }
+      if (locationQuery.trim()) {
+        const loc = locationQuery.trim().toLowerCase();
+        results = results.filter((l) => l.location?.toLowerCase().includes(loc));
+      }
     }
 
     if (!searchResults) {
@@ -492,9 +540,13 @@ export default function SearchScreen() {
     }
 
     return results;
-  }, [listings, searchResults, selectedPlatform, selectedCategory, sortBy]);
+  }, [listings, searchResults, selectedPlatform, selectedCategory, sortBy, selectedPayRange, locationQuery]);
 
-  const filteredCreators = useMemo(() => creators, [creators]);
+  const hiddenCreators = useStore((s) => s.hiddenCreators);
+  const filteredCreators = useMemo(
+    () => creators.filter((c) => !hiddenCreators.includes(c.id)),
+    [creators, hiddenCreators]
+  );
 
   const handleListingPress = useCallback(
     (listing: Listing) => {
@@ -641,7 +693,9 @@ export default function SearchScreen() {
               selectedPlatform !== 'all' ||
               selectedCategory !== 'all' ||
               selectedFollowerRange !== 'all' ||
-              selectedEngagement !== 'all'
+              selectedEngagement !== 'all' ||
+              selectedPayRange !== 'all' ||
+              Boolean(locationQuery.trim())
             }
             filters={{
               query: searchQuery,
@@ -649,6 +703,8 @@ export default function SearchScreen() {
               category: selectedCategory,
               followerRange: selectedFollowerRange,
               engagement: selectedEngagement,
+              payRange: selectedPayRange,
+              location: locationQuery,
               mode: searchMode,
             }}
           />
@@ -783,7 +839,9 @@ export default function SearchScreen() {
     draftPlatform !== 'all' ||
     draftCategory !== 'all' ||
     draftFollowerRange !== 'all' ||
-    draftEngagement !== 'all';
+    draftEngagement !== 'all' ||
+    draftPayRange !== 'all' ||
+    draftLocation.trim().length > 0;
 
   const filterSheetContent = (
     <BottomSheet
@@ -834,6 +892,43 @@ export default function SearchScreen() {
               selectedKey={draftCategory}
               onSelect={setDraftCategory}
             />
+
+            <Text style={[styles.filterLabel, { color: colors.textSecondary, marginTop: Spacing.lg }]}>
+              Pay Range
+            </Text>
+            <ListingFilterChips
+              items={payRanges}
+              selectedKey={draftPayRange}
+              onSelect={setDraftPayRange}
+            />
+
+            <Text style={[styles.filterLabel, { color: colors.textSecondary, marginTop: Spacing.lg }]}>
+              Location
+            </Text>
+            <View style={[styles.locationInputWrapper, { backgroundColor: colors.background, borderColor: draftLocation.trim() ? colors.primary : colors.border }]}>
+              <TextInput
+                value={draftLocation}
+                onChangeText={setDraftLocation}
+                placeholder="City or neighbourhood…"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCorrect={false}
+                autoCapitalize="words"
+                style={[styles.locationInput, { color: colors.text }]}
+                accessibilityLabel="Filter by location"
+              />
+              {draftLocation.trim().length > 0 && (
+                <PressableScale
+                  onPress={() => { haptics.tap(); setDraftLocation(''); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear location filter"
+                  style={styles.locationClear}
+                >
+                  <Text style={[styles.locationClearText, { color: colors.textTertiary }]}>✕</Text>
+                </PressableScale>
+              )}
+            </View>
           </>
         )}
 
@@ -1210,5 +1305,28 @@ const styles = StyleSheet.create({
   modalBtnText: {
     ...Typography.subheadline,
     fontWeight: '600',
+  },
+  locationInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    minHeight: 44,
+  },
+  locationInput: {
+    ...Typography.body,
+    flex: 1,
+    paddingVertical: Spacing.sm + 2,
+  },
+  locationClear: {
+    paddingLeft: Spacing.sm,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  locationClearText: {
+    ...Typography.body,
+    lineHeight: 20,
   },
 });

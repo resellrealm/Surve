@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
+import { useChime } from '../../hooks/useChime';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { AdaptiveImage } from '../../components/ui/AdaptiveImage';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -19,6 +20,7 @@ import { PressableScale } from '../../components/ui/PressableScale';
 import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import type { AppNotification } from '../../lib/mockData';
 import { useStore } from '../../lib/store';
+import { formatRelative } from '../../lib/dateFormat';
 
 const TYPE_ICON: Record<AppNotification['type'], any> = {
   booking: Calendar,
@@ -28,21 +30,12 @@ const TYPE_ICON: Record<AppNotification['type'], any> = {
   system: Bell,
 };
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
-}
-
 export default function NotificationsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
+  const { playChime } = useChime();
 
   const items = useStore((s) => s.notifications);
   const markNotificationRead = useStore((s) => s.markNotificationRead);
@@ -51,6 +44,17 @@ export default function NotificationsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const unread = useMemo(() => items.filter((n) => !n.read).length, [items]);
+  const chimePlayedRef = useRef(false);
+
+  // Play chime once on mount when there are unread notifications (simulates
+  // the in-app sound that would accompany a push notification banner).
+  useEffect(() => {
+    if (!chimePlayedRef.current && unread > 0) {
+      chimePlayedRef.current = true;
+      playChime();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     haptics.tap();
@@ -146,7 +150,7 @@ export default function NotificationsScreen() {
                     {n.body}
                   </Text>
                   <Text style={[styles.itemTime, { color: colors.textTertiary }]}>
-                    {relativeTime(n.created_at)} ago
+                    {formatRelative(n.created_at)}
                   </Text>
                 </View>
               </PressableScale>

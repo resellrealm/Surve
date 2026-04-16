@@ -8,6 +8,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -28,7 +29,6 @@ import {
   MapPin,
   CheckCircle,
   Send,
-  ExternalLink,
   MoreVertical,
   Flag,
   AlertTriangle,
@@ -36,6 +36,12 @@ import {
   Check,
   UserPlus,
   UserCheck,
+  Globe,
+  Clock,
+  Languages,
+  Handshake,
+  TrendingUp,
+  Eye,
 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
@@ -45,10 +51,9 @@ import { Card } from '../../components/ui/Card';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { PressableScale } from '../../components/ui/PressableScale';
 import { AnimatedLikeButton } from '../../components/ui/AnimatedLikeButton';
-import { PlatformBadge } from '../../components/creator/PlatformBadge';
-import { StatsRow } from '../../components/creator/StatsRow';
 import { CreatorProfileSkeleton } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { VerifiedBadge } from '../../components/ui/VerifiedBadge';
 import * as api from '../../lib/api';
 import { useStore } from '../../lib/store';
 import {
@@ -57,7 +62,16 @@ import {
   BorderRadius,
   Shadows,
 } from '../../constants/theme';
-import type { Creator, Review } from '../../types';
+import type { Creator, Review, CreatorSocialAccount, SocialPlatform } from '../../types';
+
+import { formatDateShort } from '../../lib/dateFormat';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const HERO_HEIGHT = 300;
+const AVATAR_SIZE = 96;
+const AVATAR_OVERLAP = 44;
+
+// ─── Report constants ────────────────────────────────────────────────────────
 
 const REPORT_REASONS = [
   { key: 'spam', label: 'Spam or misleading' },
@@ -70,49 +84,217 @@ const REPORT_REASONS = [
 
 const MAX_DESCRIPTION_LENGTH = 500;
 
-import { formatDateShort } from '../../lib/dateFormat';
+// ─── Niche chip colors ────────────────────────────────────────────────────────
 
-const formatDate = formatDateShort;
+const NICHE_PALETTE: Record<string, { bgLight: string; textLight: string; bgDark: string; textDark: string }> = {
+  hotel:      { bgLight: '#EEF0F8', textLight: '#2c428f', bgDark: '#151830', textDark: '#97ABFF' },
+  restaurant: { bgLight: '#FEF3C7', textLight: '#B45309', bgDark: '#1F1D15', textDark: '#F59E0B' },
+  bar:        { bgLight: '#F3E8FF', textLight: '#7C3AED', bgDark: '#1F1530', textDark: '#C084FC' },
+  cafe:       { bgLight: '#ECFDF5', textLight: '#047857', bgDark: '#15201D', textDark: '#6EE7B7' },
+  resort:     { bgLight: '#FEE2E2', textLight: '#B91C1C', bgDark: '#1F1515', textDark: '#EF4444' },
+  spa:        { bgLight: '#FCE7F3', textLight: '#BE185D', bgDark: '#1F1520', textDark: '#F472B6' },
+};
 
-function ReviewCard({ review }: { review: Review }) {
-  const { colors } = useTheme();
+// ─── Platform config ──────────────────────────────────────────────────────────
+
+const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; shortLabel: string; bg: string; color: string }> = {
+  instagram: { label: 'Instagram', shortLabel: 'IG', bg: '#E4405F', color: '#FFFFFF' },
+  tiktok:    { label: 'TikTok',    shortLabel: 'TT', bg: '#010101', color: '#FFFFFF' },
+  youtube:   { label: 'YouTube',   shortLabel: 'YT', bg: '#FF0000', color: '#FFFFFF' },
+  twitter:   { label: 'Twitter',   shortLabel: 'X',  bg: '#1DA1F2', color: '#FFFFFF' },
+};
+
+// ─── Utility ──────────────────────────────────────────────────────────────────
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return n.toString();
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function PlatformIconBadge({ platform, size = 32 }: { platform: SocialPlatform; size?: number }) {
+  const config = PLATFORM_CONFIG[platform] ?? { shortLabel: '?', bg: '#666', color: '#FFF' };
+  return (
+    <View
+      accessible={false}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 5,
+        backgroundColor: config.bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        style={{ color: config.color, fontSize: size * 0.33, fontWeight: '800' }}
+        allowFontScaling={false}
+      >
+        {config.shortLabel}
+      </Text>
+    </View>
+  );
+}
+
+function NicheChip({ niche, isDark }: { niche: string; isDark: boolean }) {
+  const palette = NICHE_PALETTE[niche] ?? {
+    bgLight: '#F4F3F4', textLight: '#595F6A',
+    bgDark: '#252525', textDark: '#9CA3AF',
+  };
+  const bg = isDark ? palette.bgDark : palette.bgLight;
+  const textColor = isDark ? palette.textDark : palette.textLight;
+  const label = niche.charAt(0).toUpperCase() + niche.slice(1);
 
   return (
     <View
-      style={[
-        styles.reviewCard,
-        {
-          backgroundColor: colors.surface,
-          borderColor: colors.borderLight,
-        },
-      ]}
+      accessible
+      accessibilityLabel={`Niche: ${label}`}
+      style={[styles.nicheChip, { backgroundColor: bg }]}
     >
-      <View style={styles.reviewHeader}>
-        <Avatar
-          uri={review.reviewer_avatar}
-          name={review.reviewer_name}
-          size={36}
-        />
-        <View style={styles.reviewInfo}>
-          <Text style={[styles.reviewerName, { color: colors.text }]}>
-            {review.reviewer_name}
-          </Text>
-          <Text
-            style={[styles.reviewDate, { color: colors.textTertiary }]}
-          >
-            {formatDate(review.created_at)}
+      <Text style={[styles.nicheChipText, { color: textColor }]}>{label}</Text>
+    </View>
+  );
+}
+
+function SocialCard({
+  platform,
+  handle,
+  followers,
+  engagementRate,
+  avgViews,
+  verified,
+  colors,
+}: {
+  platform: SocialPlatform;
+  handle: string;
+  followers: number;
+  engagementRate?: number | null;
+  avgViews?: number | null;
+  verified?: boolean;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const config = PLATFORM_CONFIG[platform];
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${config.label} account: ${handle}, ${formatCount(followers)} followers`}
+      style={[styles.socialCard, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}
+    >
+      <View style={styles.socialCardHeader}>
+        <PlatformIconBadge platform={platform} size={36} />
+        <View style={styles.socialCardInfo}>
+          <View style={styles.socialHandleRow}>
+            <Text style={[styles.socialHandle, { color: colors.text }]} numberOfLines={1}>
+              {handle}
+            </Text>
+            {verified && (
+              <CheckCircle size={14} color={colors.primary} fill={colors.primary} strokeWidth={2} />
+            )}
+          </View>
+          <Text style={[styles.socialPlatformLabel, { color: colors.textTertiary }]}>
+            {config.label}
           </Text>
         </View>
-        <View style={styles.reviewStars}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Star
-              key={i}
-              size={14}
-              color={colors.rating}
-              fill={i < review.rating ? colors.rating : 'transparent'}
-              strokeWidth={2}
-            />
-          ))}
+        <View style={styles.socialFollowers}>
+          <Text style={[styles.socialFollowerCount, { color: colors.text }]}>
+            {formatCount(followers)}
+          </Text>
+          <Text style={[styles.socialFollowerLabel, { color: colors.textTertiary }]}>followers</Text>
+        </View>
+      </View>
+      {(engagementRate != null || avgViews != null) && (
+        <View style={[styles.socialStats, { borderTopColor: colors.borderLight }]}>
+          {engagementRate != null && (
+            <View style={styles.socialStatItem}>
+              <TrendingUp size={12} color={colors.primary} strokeWidth={2} />
+              <Text style={[styles.socialStatText, { color: colors.textSecondary }]}>
+                {engagementRate.toFixed(1)}% engagement
+              </Text>
+            </View>
+          )}
+          {avgViews != null && (
+            <View style={styles.socialStatItem}>
+              <Eye size={12} color={colors.textTertiary} strokeWidth={2} />
+              <Text style={[styles.socialStatText, { color: colors.textSecondary }]}>
+                {formatCount(avgViews)} avg views
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function RatingSummary({
+  rating,
+  totalReviews,
+  colors,
+}: {
+  rating: number;
+  totalReviews: number;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <View style={styles.ratingSummary}>
+      <Text style={[styles.ratingLarge, { color: colors.text }]}>{rating.toFixed(1)}</Text>
+      <View style={styles.ratingRight}>
+        <View style={styles.ratingStarsRow}>
+          {Array.from({ length: 5 }).map((_, i) => {
+            const fill = i < Math.round(rating);
+            return (
+              <Star
+                key={i}
+                size={18}
+                color={colors.rating}
+                fill={fill ? colors.rating : 'transparent'}
+                strokeWidth={2}
+              />
+            );
+          })}
+        </View>
+        <Text style={[styles.ratingCount, { color: colors.textTertiary }]}>
+          {totalReviews} {totalReviews === 1 ? 'review' : 'reviews'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function ReviewCard({ review, colors }: { review: Review; colors: ReturnType<typeof useTheme>['colors'] }) {
+  return (
+    <View
+      style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}
+    >
+      <View style={styles.reviewHeader}>
+        <Avatar uri={review.reviewer_avatar} name={review.reviewer_name} size={40} />
+        <View style={styles.reviewMeta}>
+          <View style={styles.reviewMetaTop}>
+            <Text style={[styles.reviewerName, { color: colors.text }]} numberOfLines={1}>
+              {review.reviewer_name}
+            </Text>
+            {review.reviewer_role === 'business' && (
+              <View style={[styles.verifiedBizBadge, { backgroundColor: colors.activeLight }]}>
+                <Text style={[styles.verifiedBizLabel, { color: colors.active }]}>Business</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.reviewStarsRow}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star
+                key={i}
+                size={12}
+                color={colors.rating}
+                fill={i < review.rating ? colors.rating : 'transparent'}
+                strokeWidth={2}
+              />
+            ))}
+            <Text style={[styles.reviewDate, { color: colors.textTertiary }]}>
+              · {formatDateShort(review.created_at)}
+            </Text>
+          </View>
         </View>
       </View>
       <Text style={[styles.reviewComment, { color: colors.textSecondary }]}>
@@ -120,23 +302,13 @@ function ReviewCard({ review }: { review: Review }) {
       </Text>
       {review.reply_text && (
         <View
-          style={[
-            styles.replyBox,
-            {
-              backgroundColor: colors.surfaceSecondary,
-              borderLeftColor: colors.primary,
-            },
-          ]}
+          style={[styles.replyBox, { backgroundColor: colors.surfaceSecondary, borderLeftColor: colors.primary }]}
         >
-          <Text style={[styles.replyLabel, { color: colors.primary }]}>
-            RESPONSE
-          </Text>
-          <Text style={[styles.replyText, { color: colors.text }]}>
-            {review.reply_text}
-          </Text>
+          <Text style={[styles.replyLabel, { color: colors.primary }]}>RESPONSE</Text>
+          <Text style={[styles.replyText, { color: colors.text }]}>{review.reply_text}</Text>
           {review.replied_at && (
             <Text style={[styles.replyDate, { color: colors.textTertiary }]}>
-              {formatDate(review.replied_at)}
+              {formatDateShort(review.replied_at)}
             </Text>
           )}
         </View>
@@ -144,6 +316,8 @@ function ReviewCard({ review }: { review: Review }) {
     </View>
   );
 }
+
+// ─── Report Modal ─────────────────────────────────────────────────────────────
 
 function ReportModal({
   visible,
@@ -177,209 +351,90 @@ function ReportModal({
     if (!selectedReason || !currentUser) return;
     haptics.confirm();
     setSubmitting(true);
-    const ok = await api.reportUser(
-      currentUser.id,
-      targetUserId,
-      selectedReason,
-      description.trim() || undefined,
-    );
+    const ok = await api.reportUser(currentUser.id, targetUserId, selectedReason, description.trim() || undefined);
     setSubmitting(false);
-    if (ok) {
-      haptics.success();
-      setSubmitted(true);
-    } else {
-      haptics.error();
-    }
+    if (ok) { haptics.success(); setSubmitted(true); } else { haptics.error(); }
   }, [selectedReason, currentUser, targetUserId, description, haptics]);
 
-  const handleSelectReason = useCallback(
-    (key: string) => {
-      haptics.select();
-      setSelectedReason(key);
-    },
-    [haptics],
-  );
+  const handleSelectReason = useCallback((key: string) => { haptics.select(); setSelectedReason(key); }, [haptics]);
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={resetAndClose}
-    >
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={resetAndClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.modalContainer, { backgroundColor: colors.background }]}
       >
-        {/* Header */}
         <View
-          style={[
-            styles.modalHeader,
-            {
-              borderBottomColor: colors.borderLight,
-              paddingTop: insets.top > 0 ? insets.top : Spacing.lg,
-            },
-          ]}
+          style={[styles.modalHeader, { borderBottomColor: colors.borderLight, paddingTop: insets.top > 0 ? insets.top : Spacing.lg }]}
         >
           <PressableScale
-            scaleValue={0.9}
-            onPress={() => {
-              haptics.tap();
-              resetAndClose();
-            }}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
+            scaleValue={0.9} onPress={() => { haptics.tap(); resetAndClose(); }}
+            hitSlop={12} accessibilityRole="button" accessibilityLabel="Close"
             style={styles.modalCloseBtn}
           >
             <X size={22} color={colors.text} strokeWidth={2.2} />
           </PressableScale>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>
-            Report Profile
-          </Text>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Report Profile</Text>
           <View style={styles.modalCloseBtn} />
         </View>
 
         {submitted ? (
-          <Animated.View
-            entering={FadeInDown.duration(400)}
-            style={styles.successContainer}
-          >
-            <View
-              style={[
-                styles.successIcon,
-                { backgroundColor: colors.successLight },
-              ]}
-            >
+          <Animated.View entering={FadeInDown.duration(400)} style={styles.successContainer}>
+            <View style={[styles.successIcon, { backgroundColor: colors.successLight }]}>
               <Check size={32} color={colors.success} strokeWidth={2.5} />
             </View>
-            <Text style={[styles.successTitle, { color: colors.text }]}>
-              Report Submitted
+            <Text style={[styles.successTitle, { color: colors.text }]}>Report Submitted</Text>
+            <Text style={[styles.successBody, { color: colors.textSecondary }]}>
+              Thanks for helping keep Surve safe. We'll review your report and take action if needed.
             </Text>
-            <Text
-              style={[
-                styles.successBody,
-                { color: colors.textSecondary },
-              ]}
-            >
-              Thanks for helping keep Surve safe. We'll review your report and
-              take action if needed.
-            </Text>
-            <Button
-              title="Done"
-              onPress={resetAndClose}
-              size="lg"
-              style={styles.successBtn}
-            />
+            <Button title="Done" onPress={resetAndClose} size="lg" style={styles.successBtn} />
           </Animated.View>
         ) : (
           <ScrollView
-            contentContainerStyle={[
-              styles.modalBody,
-              { paddingBottom: insets.bottom + Spacing.xl },
-            ]}
+            contentContainerStyle={[styles.modalBody, { paddingBottom: insets.bottom + Spacing.xl }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <View
-              style={[
-                styles.warningBanner,
-                { backgroundColor: colors.warningLight },
-              ]}
-            >
-              <AlertTriangle
-                size={18}
-                color={colors.warning}
-                strokeWidth={2}
-              />
-              <Text
-                style={[styles.warningText, { color: colors.warning }]}
-              >
-                Reports are reviewed by our team. False reports may result in
-                account restrictions.
+            <View style={[styles.warningBanner, { backgroundColor: colors.warningLight }]}>
+              <AlertTriangle size={18} color={colors.warning} strokeWidth={2} />
+              <Text style={[styles.warningText, { color: colors.warning }]}>
+                Reports are reviewed by our team. False reports may result in account restrictions.
               </Text>
             </View>
-
             <Text style={[styles.sectionLabel, { color: colors.text }]}>
               Why are you reporting {creatorName}?
             </Text>
-
             {REPORT_REASONS.map((reason) => {
               const isSelected = selectedReason === reason.key;
               return (
                 <PressableScale
-                  key={reason.key}
-                  onPress={() => handleSelectReason(reason.key)}
-                  accessibilityRole="radio"
-                  accessibilityLabel={reason.label}
+                  key={reason.key} onPress={() => handleSelectReason(reason.key)}
+                  accessibilityRole="radio" accessibilityLabel={reason.label}
                   accessibilityState={{ selected: isSelected }}
                   style={[
                     styles.reasonRow,
                     {
-                      backgroundColor: isSelected
-                        ? colors.primaryLight + '12'
-                        : colors.surface,
-                      borderColor: isSelected
-                        ? colors.primary
-                        : colors.borderLight,
+                      backgroundColor: isSelected ? colors.primaryLight + '12' : colors.surface,
+                      borderColor: isSelected ? colors.primary : colors.borderLight,
                     },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.radioOuter,
-                      {
-                        borderColor: isSelected
-                          ? colors.primary
-                          : colors.border,
-                      },
-                    ]}
-                  >
-                    {isSelected && (
-                      <View
-                        style={[
-                          styles.radioInner,
-                          { backgroundColor: colors.primary },
-                        ]}
-                      />
-                    )}
+                  <View style={[styles.radioOuter, { borderColor: isSelected ? colors.primary : colors.border }]}>
+                    {isSelected && <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />}
                   </View>
-                  <Text
-                    style={[
-                      styles.reasonLabel,
-                      {
-                        color: isSelected ? colors.primary : colors.text,
-                      },
-                    ]}
-                  >
+                  <Text style={[styles.reasonLabel, { color: isSelected ? colors.primary : colors.text }]}>
                     {reason.label}
                   </Text>
                 </PressableScale>
               );
             })}
-
-            <Text
-              style={[
-                styles.sectionLabel,
-                { color: colors.text, marginTop: Spacing.xl },
-              ]}
-            >
+            <Text style={[styles.sectionLabel, { color: colors.text, marginTop: Spacing.xl }]}>
               Additional details (optional)
             </Text>
-            <View
-              style={[
-                styles.textAreaWrap,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
+            <View style={[styles.textAreaWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <TextInput
                 value={description}
-                onChangeText={(t) =>
-                  t.length <= MAX_DESCRIPTION_LENGTH && setDescription(t)
-                }
+                onChangeText={(t) => t.length <= MAX_DESCRIPTION_LENGTH && setDescription(t)}
                 placeholder="Tell us more about what happened…"
                 placeholderTextColor={colors.textTertiary}
                 multiline
@@ -387,13 +442,10 @@ function ReportModal({
                 maxLength={MAX_DESCRIPTION_LENGTH}
                 textAlignVertical="top"
               />
-              <Text
-                style={[styles.charCount, { color: colors.textTertiary }]}
-              >
+              <Text style={[styles.charCount, { color: colors.textTertiary }]}>
                 {description.length}/{MAX_DESCRIPTION_LENGTH}
               </Text>
             </View>
-
             <Button
               title={submitting ? 'Submitting…' : 'Submit Report'}
               onPress={handleSubmit}
@@ -404,11 +456,7 @@ function ReportModal({
               icon={
                 <Flag
                   size={18}
-                  color={
-                    !selectedReason || submitting
-                      ? colors.textTertiary
-                      : colors.onPrimary
-                  }
+                  color={!selectedReason || submitting ? colors.textTertiary : colors.onPrimary}
                   strokeWidth={2}
                 />
               }
@@ -420,26 +468,25 @@ function ReportModal({
   );
 }
 
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function CreatorProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
+    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
   });
 
   const headerBgStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 60], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
   }));
-
   const headerBorderStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [50, 60], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [70, 80], [0, 1], Extrapolation.CLAMP),
   }));
 
   const { followedCreators, toggleFollowedCreator, user: currentUser } = useStore();
@@ -448,11 +495,12 @@ export default function CreatorProfileScreen() {
   const [loading, setLoading] = React.useState(true);
   const [reportVisible, setReportVisible] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const isFollowed = creator ? followedCreators.includes(creator.id) : false;
+  const [bioExpanded, setBioExpanded] = useState(false);
 
-  const refetchCreator = useCallback(() => {
-    setRetryCount((c) => c + 1);
-  }, []);
+  const isFollowed = creator ? followedCreators.includes(creator.id) : false;
+  const isBusiness = currentUser?.role === 'business';
+
+  const refetchCreator = useCallback(() => { setRetryCount((c) => c + 1); }, []);
 
   React.useEffect(() => {
     if (!id) return;
@@ -466,24 +514,74 @@ export default function CreatorProfileScreen() {
       const found = creators.find((c) => c.id === id) ?? null;
       setCreator(found);
       setLoading(false);
-      if (found) {
-        api.getReviews(found.user_id).then(setCreatorReviews);
-      }
-    });
+      if (found) { api.getReviews(found.user_id).then(setCreatorReviews); }
+    }).catch(() => { setLoading(false); });
   }, [id, retryCount]);
 
-  const handleInvite = useCallback(() => {
-    haptics.success();
-  }, [haptics]);
+  const handleInvite = useCallback(() => { haptics.success(); }, [haptics]);
+  const handleMessage = useCallback(() => { haptics.confirm(); }, [haptics]);
+  const handleOpenReport = useCallback(() => { haptics.confirm(); setReportVisible(true); }, [haptics]);
 
-  const handleMessage = useCallback(() => {
-    haptics.confirm();
-  }, [haptics]);
+  // Build social accounts list from either social_accounts or legacy fields
+  const socialAccounts = useMemo((): Array<{
+    platform: SocialPlatform;
+    handle: string;
+    followers: number;
+    engagementRate: number | null;
+    avgViews: number | null;
+    verified: boolean;
+  }> => {
+    if (!creator) return [];
+    if (creator.social_accounts && creator.social_accounts.length > 0) {
+      return creator.social_accounts.map((sa) => ({
+        platform: sa.platform,
+        handle: sa.handle,
+        followers: sa.followers ?? 0,
+        engagementRate: sa.engagement_rate,
+        avgViews: sa.avg_views,
+        verified: sa.verified,
+      }));
+    }
+    const accounts: Array<{ platform: SocialPlatform; handle: string; followers: number; engagementRate: number | null; avgViews: number | null; verified: boolean }> = [];
+    if (creator.instagram_handle) {
+      accounts.push({
+        platform: 'instagram',
+        handle: creator.instagram_handle,
+        followers: creator.instagram_followers,
+        engagementRate: creator.engagement_rate,
+        avgViews: creator.avg_views,
+        verified: creator.verified,
+      });
+    }
+    if (creator.tiktok_handle) {
+      accounts.push({
+        platform: 'tiktok',
+        handle: creator.tiktok_handle,
+        followers: creator.tiktok_followers,
+        engagementRate: creator.engagement_rate,
+        avgViews: creator.avg_views,
+        verified: creator.verified,
+      });
+    }
+    return accounts;
+  }, [creator]);
 
-  const handleOpenReport = useCallback(() => {
-    haptics.confirm();
-    setReportVisible(true);
-  }, [haptics]);
+  const totalFollowers = useMemo(
+    () => socialAccounts.reduce((sum, a) => sum + a.followers, 0),
+    [socialAccounts],
+  );
+
+  const niches = useMemo(() => {
+    if (!creator) return [];
+    return creator.niches && creator.niches.length > 0 ? creator.niches : creator.categories;
+  }, [creator]);
+
+  const heroUri = useMemo(() => {
+    if (!creator) return undefined;
+    return creator.cover_photo_url ?? (creator.portfolio_urls[0] ?? creator.user.avatar_url ?? undefined);
+  }, [creator]);
+
+  const bioTrimmed = creator && !bioExpanded && creator.bio.length > 160;
 
   if (loading) {
     return (
@@ -509,30 +607,17 @@ export default function CreatorProfileScreen() {
     );
   }
 
-  const platform =
-    creator.instagram_handle && creator.tiktok_handle
-      ? 'both'
-      : creator.tiktok_handle
-        ? 'tiktok'
-        : 'instagram';
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style="light" />
+
+      {/* Floating header */}
       <View style={styles.floatingHeader} pointerEvents="box-none">
         <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: colors.background },
-            headerBgStyle,
-          ]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }, headerBgStyle]}
         />
         <Animated.View
-          style={[
-            styles.floatingHeaderBorder,
-            { backgroundColor: colors.border },
-            headerBorderStyle,
-          ]}
+          style={[styles.floatingHeaderBorder, { backgroundColor: colors.border }, headerBorderStyle]}
         />
         <ScreenHeader
           transparent
@@ -560,11 +645,8 @@ export default function CreatorProfileScreen() {
                 onPress={handleOpenReport}
                 hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel="Report this profile"
-                style={[
-                  styles.headerIconBtn,
-                  { backgroundColor: colors.surface },
-                ]}
+                accessibilityLabel="More options"
+                style={[styles.headerIconBtn, { backgroundColor: colors.surface }]}
               >
                 <MoreVertical size={20} color={colors.text} strokeWidth={2.2} />
               </PressableScale>
@@ -572,240 +654,259 @@ export default function CreatorProfileScreen() {
           }
         />
       </View>
+
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 100 },
-        ]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
-        {/* Hero Image */}
+        {/* ── Hero + Avatar overlap ─────────────────────────────────────── */}
         <View style={styles.heroContainer}>
           <AdaptiveImage
-            source={{
-              uri:
-                creator.portfolio_urls.length > 0
-                  ? creator.portfolio_urls[0]
-                  : creator.user.avatar_url ?? undefined,
-            }}
+            source={{ uri: heroUri }}
             style={styles.heroImage}
             contentFit="cover"
             accessibilityLabel={`${creator.user.full_name} cover photo`}
           />
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.5)']}
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.6)']}
+            locations={[0.3, 0.65, 1]}
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
+          {/* Avatar overlapping bottom of hero */}
+          <View style={styles.avatarOverlapWrap}>
+            <View style={[styles.avatarBorder, { borderColor: colors.background }]}>
+              <Avatar uri={creator.user.avatar_url} name={creator.user.full_name} size={AVATAR_SIZE} />
+            </View>
+            {creator.verified && (
+              <View style={[styles.verifiedDot, { backgroundColor: colors.background }]}>
+                <CheckCircle size={18} color={colors.primary} fill={colors.primary} strokeWidth={2} />
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* Profile Header */}
+        {/* ── Identity Section ──────────────────────────────────────────── */}
         <Animated.View
-          entering={FadeInDown.duration(500).delay(100)}
-          style={styles.profileHeader}
+          entering={FadeInDown.duration(500).delay(80)}
+          style={[styles.identitySection, { paddingTop: AVATAR_OVERLAP + Spacing.sm }]}
         >
-          <Avatar
-            uri={creator.user.avatar_url}
-            name={creator.user.full_name}
-            size={90}
-          />
-          <View style={styles.nameSection}>
-            <View style={styles.nameRow}>
-              <Text style={[styles.name, { color: colors.text }]} accessibilityRole="header">
-                {creator.user.full_name}
-              </Text>
-              {creator.verified && (
-                <CheckCircle
-                  size={20}
-                  color={colors.primary}
-                  fill={colors.primary}
-                  strokeWidth={2}
-                />
-              )}
-            </View>
-            <View style={styles.locationRow}>
-              <MapPin size={14} color={colors.textSecondary} strokeWidth={2} />
-              <Text
-                style={[styles.locationText, { color: colors.textSecondary }]}
-              >
-                {creator.location}
-              </Text>
-            </View>
-            <View style={styles.badgesRow}>
-              <PlatformBadge platform={platform} />
-              <View style={styles.ratingBadge}>
-                <Star
-                  size={14}
-                  color={colors.rating}
-                  fill={colors.rating}
-                  strokeWidth={2}
-                />
-                <Text style={[styles.ratingText, { color: colors.text }]}>
-                  {creator.rating.toFixed(1)} ({creator.total_reviews})
-                </Text>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Bio */}
-        <Animated.View entering={FadeInDown.duration(500).delay(200)}>
-          <Text style={[styles.bio, { color: colors.textSecondary }]}>
-            {creator.bio}
-          </Text>
-        </Animated.View>
-
-        {/* Handles */}
-        <Animated.View entering={FadeInDown.duration(500).delay(250)}>
-          <View style={styles.handles}>
-            {creator.instagram_handle && (
-              <View
-                style={[
-                  styles.handleChip,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-              >
-                <Text style={[styles.handleText, { color: colors.text }]}>
-                  {creator.instagram_handle}
-                </Text>
-                <ExternalLink
-                  size={14}
-                  color={colors.textTertiary}
-                  strokeWidth={2}
-                />
-              </View>
-            )}
-            {creator.tiktok_handle && (
-              <View
-                style={[
-                  styles.handleChip,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-              >
-                <Text style={[styles.handleText, { color: colors.text }]}>
-                  {creator.tiktok_handle}
-                </Text>
-                <ExternalLink
-                  size={14}
-                  color={colors.textTertiary}
-                  strokeWidth={2}
-                />
-              </View>
+          {/* Name + verified */}
+          <View style={styles.nameRow} accessibilityRole="header">
+            <Text style={[styles.name, { color: colors.text }]}>{creator.user.full_name}</Text>
+            {creator.verified && (
+              <CheckCircle size={20} color={colors.primary} fill={colors.primary} strokeWidth={2} />
             )}
           </View>
-        </Animated.View>
 
-        {/* Stats */}
-        <Animated.View entering={FadeInDown.duration(500).delay(300)}>
-          <Card style={styles.statsCard}>
-            <StatsRow
-              instagramFollowers={creator.instagram_followers}
-              tiktokFollowers={creator.tiktok_followers}
-              engagementRate={creator.engagement_rate}
-              avgViews={creator.avg_views}
-            />
-          </Card>
-        </Animated.View>
-
-        {/* Performance */}
-        <Animated.View entering={FadeInDown.duration(500).delay(350)}>
-          <Card style={styles.statsCard}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
-              Track Record
+          {/* Handle */}
+          {creator.user.username && (
+            <Text style={[styles.username, { color: colors.textTertiary }]}>
+              @{creator.user.username}
             </Text>
-            <View style={styles.perfRow}>
-              <View style={styles.perfItem}>
-                <Text style={[styles.perfValue, { color: colors.primary }]}>
-                  {creator.total_bookings}
-                </Text>
-                <Text
-                  style={[styles.perfLabel, { color: colors.textTertiary }]}
-                >
-                  Bookings
-                </Text>
+          )}
+
+          {/* Location */}
+          <View style={styles.locationRow}>
+            <MapPin size={14} color={colors.textTertiary} strokeWidth={2} />
+            <Text style={[styles.locationText, { color: colors.textSecondary }]}>
+              {creator.location}
+            </Text>
+          </View>
+
+          {/* Niches */}
+          {niches.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.nichesScroll}
+              contentContainerStyle={styles.nichesContent}
+            >
+              {niches.map((niche) => (
+                <NicheChip key={niche} niche={niche} isDark={isDark} />
+              ))}
+            </ScrollView>
+          )}
+        </Animated.View>
+
+        {/* ── Stats banner ───────────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.duration(500).delay(160)} style={styles.pagePad}>
+          <Card style={styles.statsCard}>
+            <View style={styles.statsRow}>
+              <View style={styles.statBlock} accessible accessibilityLabel={`Total followers: ${formatCount(totalFollowers)}`}>
+                <Globe size={16} color={colors.primary} strokeWidth={2} style={{ marginBottom: Spacing.xs }} />
+                <Text style={[styles.statValue, { color: colors.text }]}>{formatCount(totalFollowers)}</Text>
+                <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Followers</Text>
               </View>
-              <View
-                style={[
-                  styles.perfDivider,
-                  { backgroundColor: colors.borderLight },
-                ]}
-              />
-              <View style={styles.perfItem}>
-                <Text style={[styles.perfValue, { color: colors.primary }]}>
-                  {creator.total_reviews}
-                </Text>
-                <Text
-                  style={[styles.perfLabel, { color: colors.textTertiary }]}
-                >
-                  Reviews
-                </Text>
+              <View style={[styles.statDivider, { backgroundColor: colors.borderLight }]} />
+              <View style={styles.statBlock} accessible accessibilityLabel={`Engagement rate: ${creator.engagement_rate}%`}>
+                <TrendingUp size={16} color={colors.primary} strokeWidth={2} style={{ marginBottom: Spacing.xs }} />
+                <Text style={[styles.statValue, { color: colors.text }]}>{creator.engagement_rate}%</Text>
+                <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Engagement</Text>
               </View>
-              <View
-                style={[
-                  styles.perfDivider,
-                  { backgroundColor: colors.borderLight },
-                ]}
-              />
-              <View style={styles.perfItem}>
-                <Text style={[styles.perfValue, { color: colors.primary }]}>
-                  {creator.categories.length}
-                </Text>
-                <Text
-                  style={[styles.perfLabel, { color: colors.textTertiary }]}
-                >
-                  Categories
-                </Text>
+              <View style={[styles.statDivider, { backgroundColor: colors.borderLight }]} />
+              <View style={styles.statBlock} accessible accessibilityLabel={`Average views: ${formatCount(creator.avg_views)}`}>
+                <Eye size={16} color={colors.primary} strokeWidth={2} style={{ marginBottom: Spacing.xs }} />
+                <Text style={[styles.statValue, { color: colors.text }]}>{formatCount(creator.avg_views)}</Text>
+                <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Avg Views</Text>
               </View>
             </View>
           </Card>
         </Animated.View>
 
-        {/* Portfolio */}
+        {/* ── Connected Socials ──────────────────────────────────────────── */}
+        {socialAccounts.length > 0 && (
+          <Animated.View entering={FadeInDown.duration(500).delay(220)} style={styles.pagePad}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+              Social Channels
+            </Text>
+            <View style={styles.socialCardsWrap}>
+              {socialAccounts.map((acct) => (
+                <SocialCard
+                  key={`${acct.platform}-${acct.handle}`}
+                  platform={acct.platform}
+                  handle={acct.handle}
+                  followers={acct.followers}
+                  engagementRate={acct.engagementRate}
+                  avgViews={acct.avgViews}
+                  verified={acct.verified}
+                  colors={colors}
+                />
+              ))}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* ── Portfolio Carousel ─────────────────────────────────────────── */}
         {creator.portfolio_urls.length > 0 && (
-          <Animated.View entering={FadeInDown.duration(500).delay(400)}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
-              Portfolio
-            </Text>
+          <Animated.View entering={FadeInDown.duration(500).delay(280)}>
+            <View style={styles.pagePad}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+                Portfolio
+              </Text>
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.portfolioScroll}
             >
               {creator.portfolio_urls.map((url, idx) => (
-                <AdaptiveImage
+                <PressableScale
                   key={idx}
-                  source={{ uri: url }}
-                  contentFit="cover"
-                  style={styles.portfolioImage}
+                  scaleValue={0.97}
+                  onPress={() => haptics.tap()}
                   accessibilityLabel={`Portfolio image ${idx + 1}`}
-                />
+                  style={styles.portfolioItemWrap}
+                >
+                  <AdaptiveImage
+                    source={{ uri: url }}
+                    contentFit="cover"
+                    style={styles.portfolioImage}
+                    accessibilityLabel={`Portfolio image ${idx + 1}`}
+                  />
+                  {idx === 0 && (
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0,0,0,0.3)']}
+                      style={[StyleSheet.absoluteFill, { borderRadius: BorderRadius.lg }]}
+                      pointerEvents="none"
+                    />
+                  )}
+                </PressableScale>
               ))}
             </ScrollView>
           </Animated.View>
         )}
 
-        {/* Reviews */}
-        {creatorReviews.length > 0 && (
-          <Animated.View entering={FadeInDown.duration(500).delay(500)}>
+        {/* ── About ─────────────────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.duration(500).delay(340)} style={styles.pagePad}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+            About
+          </Text>
+          <Card style={styles.aboutCard}>
+            {/* Bio */}
             <Text
-              style={[
-                styles.sectionTitle,
-                { color: colors.text, marginTop: Spacing.xxl },
-              ]}
-              accessibilityRole="header"
+              style={[styles.bioText, { color: colors.textSecondary }]}
+              numberOfLines={bioTrimmed ? 4 : undefined}
             >
-              Reviews ({creatorReviews.length})
+              {creator.bio}
             </Text>
+            {creator.bio.length > 160 && (
+              <PressableScale
+                scaleValue={0.96}
+                onPress={() => { haptics.tap(); setBioExpanded((e) => !e); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={bioExpanded ? 'Show less' : 'Show more'}
+                style={styles.bioToggle}
+              >
+                <Text style={[styles.bioToggleText, { color: colors.primary }]}>
+                  {bioExpanded ? 'Show less' : 'Show more'}
+                </Text>
+              </PressableScale>
+            )}
+
+            {/* Divider */}
+            <View style={[styles.aboutDivider, { backgroundColor: colors.borderLight }]} />
+
+            {/* Meta rows */}
+            {creator.languages && creator.languages.length > 0 && (
+              <View style={styles.aboutRow}>
+                <Languages size={16} color={colors.textTertiary} strokeWidth={2} />
+                <Text style={[styles.aboutRowLabel, { color: colors.textTertiary }]}>Languages</Text>
+                <Text style={[styles.aboutRowValue, { color: colors.text }]}>
+                  {creator.languages.join(', ')}
+                </Text>
+              </View>
+            )}
+            {creator.response_time_hours != null && (
+              <View style={styles.aboutRow}>
+                <Clock size={16} color={colors.textTertiary} strokeWidth={2} />
+                <Text style={[styles.aboutRowLabel, { color: colors.textTertiary }]}>Response time</Text>
+                <Text style={[styles.aboutRowValue, { color: colors.text }]}>
+                  {creator.response_time_hours < 24
+                    ? `~${creator.response_time_hours}h`
+                    : `~${Math.round(creator.response_time_hours / 24)}d`}
+                </Text>
+              </View>
+            )}
+            {creator.completion_rate != null && (
+              <View style={styles.aboutRow}>
+                <CheckCircle size={16} color={colors.textTertiary} strokeWidth={2} />
+                <Text style={[styles.aboutRowLabel, { color: colors.textTertiary }]}>Completion rate</Text>
+                <Text style={[styles.aboutRowValue, { color: colors.success }]}>
+                  {(creator.completion_rate * 100).toFixed(0)}%
+                </Text>
+              </View>
+            )}
+            <View style={styles.aboutRow}>
+              <Handshake size={16} color={colors.textTertiary} strokeWidth={2} />
+              <Text style={[styles.aboutRowLabel, { color: colors.textTertiary }]}>Collaborations</Text>
+              <Text style={[styles.aboutRowValue, { color: colors.text }]}>
+                {creator.total_bookings} completed
+              </Text>
+            </View>
+          </Card>
+        </Animated.View>
+
+        {/* ── Reviews ───────────────────────────────────────────────────── */}
+        {(creatorReviews.length > 0 || creator.total_reviews > 0) && (
+          <Animated.View entering={FadeInDown.duration(500).delay(400)} style={styles.pagePad}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+              Reviews
+            </Text>
+            <Card style={styles.ratingCard}>
+              <RatingSummary rating={creator.rating} totalReviews={creator.total_reviews} colors={colors} />
+            </Card>
             {creatorReviews.map((review) => (
-              <ReviewCard key={review.id} review={review} />
+              <ReviewCard key={review.id} review={review} colors={colors} />
             ))}
           </Animated.View>
         )}
       </Animated.ScrollView>
 
-      {/* Bottom CTA */}
+      {/* ── Bottom CTA ─────────────────────────────────────────────────── */}
       <Animated.View
         entering={FadeInUp.duration(500).delay(300)}
         style={[
@@ -822,15 +923,18 @@ export default function CreatorProfileScreen() {
           onPress={handleMessage}
           variant="outline"
           size="lg"
-          style={styles.ctaButtonHalf}
+          style={isBusiness ? styles.ctaHalf : styles.ctaFull}
           icon={<Send size={18} color={colors.primary} strokeWidth={2} />}
         />
-        <Button
-          title="Invite to Listing"
-          onPress={handleInvite}
-          size="lg"
-          style={styles.ctaButtonHalf}
-        />
+        {isBusiness && (
+          <Button
+            title="Invite to Collab"
+            onPress={handleInvite}
+            size="lg"
+            style={styles.ctaHalf}
+            icon={<Handshake size={18} color={colors.onPrimary} strokeWidth={2} />}
+          />
+        )}
       </Animated.View>
 
       {creator && (
@@ -845,22 +949,40 @@ export default function CreatorProfileScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.lg,
-  },
+  container: { flex: 1 },
+  pagePad: { paddingHorizontal: Spacing.lg },
+
+  // ── Hero ────────────────────────────────────────────────────────────────────
   heroContainer: {
-    marginHorizontal: -Spacing.lg,
-    height: 240,
+    height: HERO_HEIGHT,
     position: 'relative',
   },
   heroImage: {
     width: '100%',
-    height: 240,
+    height: HERO_HEIGHT,
   },
+  avatarOverlapWrap: {
+    position: 'absolute',
+    bottom: -AVATAR_OVERLAP,
+    left: Spacing.lg,
+  },
+  avatarBorder: {
+    borderRadius: (AVATAR_SIZE + 6) / 2,
+    borderWidth: 3,
+    ...Shadows.md,
+  },
+  verifiedDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: -2,
+    borderRadius: 12,
+    padding: 2,
+  },
+
+  // ── Floating header ─────────────────────────────────────────────────────────
   floatingHeader: {
     position: 'absolute',
     top: 0,
@@ -875,140 +997,159 @@ const styles = StyleSheet.create({
     right: 0,
     height: StyleSheet.hairlineWidth,
   },
-  profileHeader: {
-    flexDirection: 'row',
+  headerRightRow: { flexDirection: 'row', gap: Spacing.sm },
+  headerIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.xl,
+    justifyContent: 'center',
   },
-  nameSection: {
-    flex: 1,
-    marginLeft: Spacing.lg,
+
+  // ── Identity ────────────────────────────────────────────────────────────────
+  identitySection: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   name: {
     ...Typography.title2,
+  },
+  username: {
+    ...Typography.subheadline,
+    marginBottom: Spacing.xs,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   locationText: {
     ...Typography.subheadline,
   },
-  badgesRow: {
-    flexDirection: 'row',
+  nichesScroll: {
+    marginLeft: -Spacing.lg,
+    marginRight: -Spacing.lg,
+  },
+  nichesContent: {
+    paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
-    marginTop: Spacing.sm,
-    alignItems: 'center',
   },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  ratingText: {
-    ...Typography.caption1,
-    fontWeight: '600',
-  },
-  bio: {
-    ...Typography.body,
-    lineHeight: 26,
-    marginBottom: Spacing.lg,
-  },
-  handles: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.xl,
-    flexWrap: 'wrap',
-  },
-  handleChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  nicheChip: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
   },
-  handleText: {
-    ...Typography.subheadline,
-    fontWeight: '500',
+  nicheChipText: {
+    ...Typography.caption1,
+    fontWeight: '700',
   },
-  statsCard: {
-    marginBottom: Spacing.lg,
-  },
+
+  // ── Stats ───────────────────────────────────────────────────────────────────
+  statsCard: { marginBottom: Spacing.xxl },
+  statsRow: { flexDirection: 'row', alignItems: 'center' },
+  statBlock: { flex: 1, alignItems: 'center', paddingVertical: Spacing.sm },
+  statValue: { ...Typography.headline, fontWeight: '700' },
+  statLabel: { ...Typography.caption2, marginTop: Spacing.xxs },
+  statDivider: { width: 1, height: 40 },
+
+  // ── Social Cards ────────────────────────────────────────────────────────────
   sectionTitle: {
     ...Typography.title3,
     marginBottom: Spacing.md,
+    marginTop: Spacing.xxl,
   },
-  perfRow: {
+  socialCardsWrap: { gap: Spacing.sm, marginBottom: Spacing.xs },
+  socialCard: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.lg,
+    ...Shadows.sm,
+  },
+  socialCardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  socialCardInfo: { flex: 1 },
+  socialHandleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  socialHandle: { ...Typography.subheadline, fontWeight: '600' },
+  socialPlatformLabel: { ...Typography.caption1, marginTop: 2 },
+  socialFollowers: { alignItems: 'flex-end' },
+  socialFollowerCount: { ...Typography.headline, fontWeight: '700' },
+  socialFollowerLabel: { ...Typography.caption2 },
+  socialStats: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexWrap: 'wrap',
+  },
+  socialStatItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  socialStatText: { ...Typography.caption1 },
+
+  // ── Portfolio ───────────────────────────────────────────────────────────────
+  portfolioScroll: {
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+    paddingBottom: Spacing.xs,
+  },
+  portfolioItemWrap: { position: 'relative' },
+  portfolioImage: {
+    width: 160,
+    height: 213,
+    borderRadius: BorderRadius.lg,
+  },
+
+  // ── About ───────────────────────────────────────────────────────────────────
+  aboutCard: { gap: 0, marginBottom: Spacing.xs },
+  bioText: {
+    ...Typography.body,
+    lineHeight: 26,
+  },
+  bioToggle: { marginTop: Spacing.sm, alignSelf: 'flex-start' },
+  bioToggleText: { ...Typography.subheadline, fontWeight: '600' },
+  aboutDivider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.lg },
+  aboutRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  perfItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  perfValue: {
-    ...Typography.title2,
-    fontWeight: '800',
-  },
-  perfLabel: {
-    ...Typography.caption2,
-    marginTop: Spacing.xs,
-  },
-  perfDivider: {
-    width: 1,
-    height: 36,
-  },
-  portfolioScroll: {
-    gap: Spacing.md,
-  },
-  portfolioImage: {
-    width: 200,
-    height: 200,
-    borderRadius: BorderRadius.lg,
-    resizeMode: 'cover',
-  },
+  aboutRowLabel: { ...Typography.subheadline, flex: 1 },
+  aboutRowValue: { ...Typography.subheadline, fontWeight: '600' },
+
+  // ── Rating ──────────────────────────────────────────────────────────────────
+  ratingCard: { marginBottom: Spacing.md },
+  ratingSummary: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
+  ratingLarge: { ...Typography.title1, fontWeight: '800' },
+  ratingRight: { gap: Spacing.xs },
+  ratingStarsRow: { flexDirection: 'row', gap: 3 },
+  ratingCount: { ...Typography.footnote },
+
+  // ── Reviews ─────────────────────────────────────────────────────────────────
   reviewCard: {
     borderRadius: BorderRadius.md,
     borderWidth: StyleSheet.hairlineWidth,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
   },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
+  reviewHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, marginBottom: Spacing.md },
+  reviewMeta: { flex: 1 },
+  reviewMetaTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
+  reviewerName: { ...Typography.subheadline, fontWeight: '600', flex: 1 },
+  verifiedBizBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
   },
-  reviewInfo: {
-    flex: 1,
-    marginLeft: Spacing.md,
-  },
-  reviewerName: {
-    ...Typography.subheadline,
-    fontWeight: '600',
-  },
-  reviewDate: {
-    ...Typography.caption2,
-    marginTop: Spacing.xxs,
-  },
-  reviewStars: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  reviewComment: {
-    ...Typography.subheadline,
-    lineHeight: 22,
-  },
+  verifiedBizLabel: { ...Typography.caption2, fontWeight: '700' },
+  reviewStarsRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  reviewDate: { ...Typography.caption2, marginLeft: Spacing.xs },
+  reviewComment: { ...Typography.subheadline, lineHeight: 22 },
   replyBox: {
     marginTop: Spacing.md,
     padding: Spacing.md,
@@ -1016,19 +1157,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     gap: 4,
   },
-  replyLabel: {
-    ...Typography.caption2,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  replyText: {
-    ...Typography.footnote,
-    lineHeight: 20,
-  },
-  replyDate: {
-    ...Typography.caption2,
-    marginTop: 2,
-  },
+  replyLabel: { ...Typography.caption2, fontWeight: '700', letterSpacing: 0.8 },
+  replyText: { ...Typography.footnote, lineHeight: 20 },
+  replyDate: { ...Typography.caption2, marginTop: 2 },
+
+  // ── Bottom CTA ───────────────────────────────────────────────────────────────
   bottomCta: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -1037,24 +1170,11 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     ...Shadows.lg,
   },
-  ctaButtonHalf: {
-    flex: 1,
-  },
-  headerRightRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  headerIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // ─── Report Modal ──────────────────────────────────────────────────
-  modalContainer: {
-    flex: 1,
-  },
+  ctaHalf: { flex: 1 },
+  ctaFull: { flex: 1 },
+
+  // ── Report Modal ────────────────────────────────────────────────────────────
+  modalContainer: { flex: 1 },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1063,21 +1183,9 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  modalCloseBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
-    ...Typography.headline,
-    textAlign: 'center',
-    flex: 1,
-  },
-  modalBody: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-  },
+  modalCloseBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { ...Typography.headline, textAlign: 'center', flex: 1 },
+  modalBody: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg },
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1086,16 +1194,8 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     marginBottom: Spacing.xl,
   },
-  warningText: {
-    ...Typography.caption1,
-    flex: 1,
-    lineHeight: 20,
-  },
-  sectionLabel: {
-    ...Typography.subheadline,
-    fontWeight: '600',
-    marginBottom: Spacing.md,
-  },
+  warningText: { ...Typography.caption1, flex: 1, lineHeight: 20 },
+  sectionLabel: { ...Typography.subheadline, fontWeight: '600', marginBottom: Spacing.md },
   reasonRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1107,63 +1207,15 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     minHeight: 52,
   },
-  radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  reasonLabel: {
-    ...Typography.body,
-    flex: 1,
-  },
-  textAreaWrap: {
-    borderWidth: 1,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    minHeight: 120,
-  },
-  textArea: {
-    ...Typography.body,
-    minHeight: 80,
-  },
-  charCount: {
-    ...Typography.caption2,
-    textAlign: 'right',
-    marginTop: Spacing.xs,
-  },
-  successContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xxl,
-  },
-  successIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-  },
-  successTitle: {
-    ...Typography.title2,
-    marginBottom: Spacing.sm,
-  },
-  successBody: {
-    ...Typography.body,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  successBtn: {
-    marginTop: Spacing.xxl,
-    alignSelf: 'stretch',
-  },
+  radioOuter: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  radioInner: { width: 12, height: 12, borderRadius: 6 },
+  reasonLabel: { ...Typography.body, flex: 1 },
+  textAreaWrap: { borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, minHeight: 120 },
+  textArea: { ...Typography.body, minHeight: 80 },
+  charCount: { ...Typography.caption2, textAlign: 'right', marginTop: Spacing.xs },
+  successContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xxl },
+  successIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg },
+  successTitle: { ...Typography.title2, marginBottom: Spacing.sm },
+  successBody: { ...Typography.body, textAlign: 'center', lineHeight: 24 },
+  successBtn: { marginTop: Spacing.xxl, alignSelf: 'stretch' },
 });

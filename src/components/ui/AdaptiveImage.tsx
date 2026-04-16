@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import { StyleSheet, View, type ViewStyle, type StyleProp } from 'react-native';
 import { Image, type ImageProps } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 import { useTheme } from '../../hooks/useTheme';
 
 interface AdaptiveImageProps extends Omit<ImageProps, 'style'> {
@@ -26,13 +31,29 @@ export function AdaptiveImage({
   circular = false,
   blurhash,
   accessibilityLabel,
+  // consumed here so we handle the fade ourselves; callers may still pass it
+  transition: _transition,
+  onLoad,
   ...imageProps
 }: AdaptiveImageProps) {
   const { isDark } = useTheme();
 
-  const placeholderProps = blurhash
-    ? { placeholder: { blurhash }, placeholderContentFit: 'cover' as const }
-    : {};
+  // opacity starts at 0 and fades to 1 once the image is decoded — no pop
+  const opacity = useSharedValue(0);
+  const onLoadRef = useRef(onLoad);
+  onLoadRef.current = onLoad;
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  const handleLoad = useCallback(
+    (event: Parameters<NonNullable<ImageProps['onLoad']>>[0]) => {
+      opacity.value = withTiming(1, { duration: 200 });
+      onLoadRef.current?.(event);
+    },
+    [opacity],
+  );
 
   return (
     <View
@@ -41,7 +62,24 @@ export function AdaptiveImage({
       accessibilityLabel={accessibilityLabel}
       style={[styles.wrapper, style]}
     >
-      <Image {...imageProps} {...placeholderProps} style={StyleSheet.absoluteFill} />
+      {/* Blurhash rendered as a static background — visible while the main image is loading */}
+      {blurhash ? (
+        <Image
+          source={{ blurhash }}
+          contentFit="cover"
+          style={StyleSheet.absoluteFill}
+          accessible={false}
+          importantForAccessibility="no"
+        />
+      ) : null}
+      {/* Main image fades in via Reanimated once decoded — eliminates the pop */}
+      <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
+        <Image
+          {...imageProps}
+          style={StyleSheet.absoluteFill}
+          onLoad={handleLoad}
+        />
+      </Animated.View>
       {isDark && gradient && (
         <LinearGradient
           colors={[

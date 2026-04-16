@@ -42,6 +42,29 @@ export interface UserMilestones {
   first_payout_received?: string;
 }
 
+// ─── Creator Social Account ─────────────────────────────────────────────────
+
+export type SocialPlatform = 'tiktok' | 'instagram' | 'youtube' | 'twitter';
+
+export interface CreatorSocialAccount {
+  id: string;
+  creator_id: string;
+  platform: SocialPlatform;
+  handle: string;
+  verified: boolean;
+  followers: number | null;
+  avg_views: number | null;
+  avg_likes: number | null;
+  avg_comments: number | null;
+  engagement_rate: number | null;
+  verified_at: string | null;
+  last_synced_at: string | null;
+  verification_code: string | null;
+  /** Set when a screenshot has been submitted for manual review. */
+  verification_status: 'pending_screenshot' | 'approved' | 'rejected' | null;
+  created_at: string;
+}
+
 // ─── Creator ─────────────────────────────────────────────────────────────────
 
 export interface Creator {
@@ -62,9 +85,17 @@ export interface Creator {
   total_bookings: number;
   location: string;
   verified: boolean;
+  cover_photo_url?: string | null;
+  niches?: string[] | null;
+  languages?: string[] | null;
+  intro_video_url?: string | null;
+  response_time_hours?: number | null;
+  completion_rate?: number | null;
+  highlight_metrics?: Record<string, unknown> | null;
   show_rates_publicly?: boolean;
   stripe_account_id?: string | null;
   stripe_onboarding_complete?: boolean | null;
+  social_accounts?: CreatorSocialAccount[];
   created_at: string;
 }
 
@@ -146,6 +177,7 @@ export interface Listing {
   location: string;
   image_url: string;
   image_blurhash?: string | null;
+  gallery_images?: string[] | null;
   status: ListingStatus;
   applicants_count: number;
   listing_type?: ListingType | null;
@@ -160,6 +192,9 @@ export interface Listing {
   brand_guidelines?: string | null;
   location_id?: string | null;
   location_detail?: Location | null;
+  is_boosted?: boolean;
+  boost_tier?: 'standard' | 'premium' | 'top';
+  inspiration_links?: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -412,12 +447,34 @@ export interface UserStats {
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 
+// ─── Boost ──────────────────────────────────────────────────────────────────
+
+export type BoostStatus = 'pending' | 'active' | 'expired' | 'cancelled';
+
+export interface Boost {
+  id: string;
+  listing_id: string;
+  business_id: string;
+  tier: 'standard' | 'premium' | 'top';
+  status: BoostStatus;
+  amount_cents: number;
+  currency: string;
+  stripe_payment_intent_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  created_at: string;
+  updated_at: string;
+  listing?: Listing;
+}
+
 export interface Application {
   id: string;
   listing_id: string;
   creator_id: string;
   message: string;
   status: ApplicationStatus;
+  proposed_deliverables: Record<string, unknown>;
+  fit_score?: number | null;
   created_at: string;
   updated_at: string;
   creator?: Creator;

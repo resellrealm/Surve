@@ -77,9 +77,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     policy: "appVersion",
   },
   updates: {
-    url: EAS_PROJECT_ID
-      ? `https://u.expo.dev/${EAS_PROJECT_ID}`
-      : "https://u.expo.dev/YOUR_EAS_PROJECT_ID",
+    url: `https://u.expo.dev/${EAS_PROJECT_ID ?? ""}`,
     enabled: true,
     fallbackToCacheTimeout: 0,
     checkAutomatically: "ON_LOAD" as const,
@@ -89,7 +87,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   extra: {
     eas: {
-      projectId: EAS_PROJECT_ID ?? "YOUR_EAS_PROJECT_ID",
+      projectId: EAS_PROJECT_ID ?? "",
     },
   },
   plugins: [

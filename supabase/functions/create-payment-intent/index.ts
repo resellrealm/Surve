@@ -40,9 +40,18 @@ serve(async (req) => {
       });
     }
 
-    const { booking_id, amount_cents } = await req.json();
-    if (!booking_id || !amount_cents || amount_cents <= 0) {
-      return new Response(JSON.stringify({ error: "booking_id and positive amount_cents required" }), {
+    const body = await req.json();
+    const { booking_id, boost_id, amount_cents, metadata: extraMetadata } = body;
+
+    if (!amount_cents || amount_cents <= 0) {
+      return new Response(JSON.stringify({ error: "Positive amount_cents required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!booking_id && !boost_id) {
+      return new Response(JSON.stringify({ error: "booking_id or boost_id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -53,6 +62,63 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // ─── Boost payment flow ────────────────────────────────────────────
+    if (boost_id) {
+      const { data: boost, error: boostError } = await serviceClient
+        .from("boosts")
+        .select("id, listing_id, business_id, tier, status")
+        .eq("id", boost_id)
+        .single();
+
+      if (boostError || !boost) {
+        return new Response(JSON.stringify({ error: "Boost not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (boost.business_id !== user.id) {
+        return new Response(JSON.stringify({ error: "Only the boost owner can pay for it" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount_cents,
+        currency: "gbp",
+        metadata: {
+          boost_id: boost.id,
+          boost_tier: boost.tier,
+          listing_id: boost.listing_id,
+          business_id: boost.business_id,
+          ...(extraMetadata ?? {}),
+        },
+      });
+
+      const { error: txError } = await serviceClient.from("transactions").insert({
+        booking_id: null,
+        payer_id: boost.business_id,
+        payee_id: null,
+        kind: "payment",
+        amount_cents,
+        currency: "gbp",
+        status: "pending",
+        stripe_payment_intent_id: paymentIntent.id,
+        description: `Boost (${boost.tier}) for listing ${boost.listing_id}`,
+      });
+
+      if (txError) {
+        console.error("Failed to create boost transaction record:", txError);
+      }
+
+      return new Response(
+        JSON.stringify({ client_secret: paymentIntent.client_secret, payment_intent_id: paymentIntent.id }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ─── Booking payment flow (existing) ───────────────────────────────
     const { data: booking, error: bookingError } = await serviceClient
       .from("bookings")
       .select("id, business_id, creator_id, status")

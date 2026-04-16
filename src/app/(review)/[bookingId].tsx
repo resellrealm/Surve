@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, Text, KeyboardAvoidingView, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -17,6 +18,7 @@ import { useMilestones } from '../../hooks/useMilestones';
 import { Typography, Spacing, BorderRadius } from '../../constants/theme';
 
 const MAX_COMMENT = 140;
+const DRAFT_KEY_PREFIX = 'surve:review-draft:';
 
 export default function ReviewScreen() {
   const { colors } = useTheme();
@@ -39,6 +41,39 @@ export default function ReviewScreen() {
     }
   }, [bookingId]);
 
+  // --- Draft auto-save: restore on mount ---
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (!bookingId) return;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DRAFT_KEY_PREFIX + bookingId);
+        if (raw) {
+          const draft = JSON.parse(raw);
+          if (typeof draft.rating === 'number') setRating(draft.rating);
+          if (typeof draft.comment === 'string') setComment(draft.comment);
+        }
+      } catch {
+        // ignore corrupt draft
+      } finally {
+        restoredRef.current = true;
+      }
+    })();
+  }, [bookingId]);
+
+  // --- Draft auto-save: persist on change (debounced 500ms) ---
+  useEffect(() => {
+    if (!restoredRef.current || !bookingId) return;
+    const timer = setTimeout(() => {
+      AsyncStorage.setItem(
+        DRAFT_KEY_PREFIX + bookingId,
+        JSON.stringify({ rating, comment }),
+      ).catch(() => {});
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [rating, comment, bookingId]);
+
   const handleSubmit = useCallback(async () => {
     if (!user || !booking || rating === 0) {
       toast.warning('Please select a star rating');
@@ -57,6 +92,7 @@ export default function ReviewScreen() {
       });
 
       if (!success) throw new Error('Failed');
+      await AsyncStorage.removeItem(DRAFT_KEY_PREFIX + bookingId).catch(() => {});
       haptics.success();
       tryUnlock('first_review_left');
       setDone(true);

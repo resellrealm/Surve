@@ -14,6 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Check, ArrowRight } from 'lucide-react-native';
 import { useHaptics } from '../../hooks/useHaptics';
+import { useChime } from '../../hooks/useChime';
 import { useMilestones } from '../../hooks/useMilestones';
 import { useTheme } from '../../hooks/useTheme';
 import { Button } from '../../components/ui/Button';
@@ -25,6 +26,7 @@ import { ModalHeader } from '../../components/ui/ModalHeader';
 export default function PaymentSuccessScreen() {
   const { colors } = useTheme();
   const haptics = useHaptics();
+  const { playChime } = useChime();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ amount?: string; title?: string }>();
@@ -35,6 +37,7 @@ export default function PaymentSuccessScreen() {
 
   useEffect(() => {
     haptics.success();
+    playChime();
     tryUnlock('first_payout_received');
     scale.value = reducedMotion
       ? withDelay(150, withTiming(1, { duration: 150 }))

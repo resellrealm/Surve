@@ -11,7 +11,11 @@
     "build:preview": "eas build --profile preview --platform all",
     "build:prod": "eas build --profile production --platform all",
     "submit:prod": "eas submit --profile production --platform all",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "screenshots": "tsx src/scripts/generate-screenshots.ts",
+    "screenshots:6.7": "tsx src/scripts/generate-screenshots.ts --device=6.7",
+    "screenshots:6.5": "tsx src/scripts/generate-screenshots.ts --device=6.5",
+    "screenshots:5.5": "tsx src/scripts/generate-screenshots.ts --device=5.5"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
@@ -62,6 +66,7 @@
     "@types/react": "~19.2.2",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.9",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.2"
   },
   "private": true

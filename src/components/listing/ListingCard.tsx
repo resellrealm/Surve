@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
-import { MapPin, Clock, Users, Heart } from 'lucide-react-native';
+import { StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MapPin, Clock, Users, Heart, Star } from 'lucide-react-native';
 import { useHaptics } from '../../hooks/useHaptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
@@ -8,6 +9,7 @@ import { AdaptiveImage } from '../ui/AdaptiveImage';
 import { PlatformBadge } from '../creator/PlatformBadge';
 import { Badge } from '../ui/Badge';
 import { PressableScale } from '../ui/PressableScale';
+import { ThemedText } from '../ui/ThemedText';
 import { AnimatedLikeButton } from '../ui/AnimatedLikeButton';
 import { ContextMenu } from '../ui/ContextMenu';
 import { useListingContextActions } from '../../hooks/useCardContextActions';
@@ -17,6 +19,7 @@ import {
   BorderRadius,
   Shadows,
 } from '../../constants/theme';
+import { formatCurrencyRange } from '../../lib/currency';
 import type { Listing } from '../../types';
 
 interface ListingCardProps {
@@ -33,11 +36,6 @@ function formatDeadline(deadline: string): string {
   if (days === 0) return 'Today';
   if (days === 1) return '1 day left';
   return `${days} days left`;
-}
-
-function formatPay(min: number, max: number): string {
-  if (min === max) return `$${min}`;
-  return `$${min} - $${max}`;
 }
 
 function capitalizeFirst(s: string): string {
@@ -102,6 +100,17 @@ export function ListingCard({ listing, onPress }: ListingCardProps) {
             <Heart size={18} color={color} fill={fill} strokeWidth={2} />
           )}
         </AnimatedLikeButton>
+        {listing.is_boosted && (
+          <LinearGradient
+            colors={['#F59E0B', '#D97706']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.boostedBadge}
+          >
+            <Star size={11} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2} />
+            <ThemedText variant="caption1" style={styles.boostedText}>Boosted</ThemedText>
+          </LinearGradient>
+        )}
       </View>
       <View style={styles.content}>
         <View style={styles.topRow}>
@@ -109,43 +118,45 @@ export function ListingCard({ listing, onPress }: ListingCardProps) {
             <PlatformBadge platform={listing.platform} />
             <Badge text={capitalizeFirst(listing.category)} small />
           </View>
-          <Text style={[styles.pay, { color: colors.primary }]}>
-            {formatPay(listing.pay_min, listing.pay_max)}
-          </Text>
+          <ThemedText variant="headline" style={[styles.pay, { color: colors.primary }]}>
+            {formatCurrencyRange(listing.pay_min, listing.pay_max)}
+          </ThemedText>
         </View>
 
-        <Text
+        <ThemedText
+          variant="headline"
           style={[styles.title, { color: colors.text }]}
           numberOfLines={2}
         >
           {listing.title}
-        </Text>
+        </ThemedText>
 
-        <Text
+        <ThemedText
+          variant="subheadline"
           style={[styles.businessName, { color: colors.textSecondary }]}
           numberOfLines={1}
         >
           {listing.business.business_name}
-        </Text>
+        </ThemedText>
 
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
             <MapPin size={14} color={colors.textTertiary} strokeWidth={2} />
-            <Text style={[styles.metaText, { color: colors.textTertiary }]}>
+            <ThemedText variant="caption1" style={{ color: colors.textTertiary }}>
               {listing.location}
-            </Text>
+            </ThemedText>
           </View>
           <View style={styles.metaItem}>
             <Clock size={14} color={colors.textTertiary} strokeWidth={2} />
-            <Text style={[styles.metaText, { color: colors.textTertiary }]}>
+            <ThemedText variant="caption1" style={{ color: colors.textTertiary }}>
               {formatDeadline(listing.deadline)}
-            </Text>
+            </ThemedText>
           </View>
           <View style={styles.metaItem}>
             <Users size={14} color={colors.textTertiary} strokeWidth={2} />
-            <Text style={[styles.metaText, { color: colors.textTertiary }]}>
+            <ThemedText variant="caption1" style={{ color: colors.textTertiary }}>
               {listing.applicants_count}
-            </Text>
+            </ThemedText>
           </View>
         </View>
       </View>
@@ -173,6 +184,24 @@ const styles = StyleSheet.create({
     right: Spacing.sm,
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderRadius: 18,
+  },
+  boostedBadge: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm + 36 + Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    ...Shadows.sm,
+  },
+  boostedText: {
+    ...Typography.caption1,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   content: {
     padding: Spacing.lg,
@@ -207,8 +236,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-  },
-  metaText: {
-    ...Typography.caption1,
   },
 });

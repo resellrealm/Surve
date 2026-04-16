@@ -19,10 +19,12 @@ import {
   Star,
   Megaphone,
   Mail,
+  Volume2,
 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
+import { useChime } from '../../hooks/useChime';
 import {
   DEFAULT_NOTIFICATION_PREFS,
   getNotificationPrefs,
@@ -118,6 +120,9 @@ export default function PreferencesScreen() {
   const haptics = useHaptics();
   const themePreference = useStore((s) => s.themePreference);
   const setThemePreference = useStore((s) => s.setThemePreference);
+  const soundEnabled = useStore((s) => s.soundEnabled);
+  const setSoundEnabled = useStore((s) => s.setSoundEnabled);
+  const { playChime } = useChime();
   const user = useStore((s) => s.user);
 
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
@@ -209,6 +214,43 @@ export default function PreferencesScreen() {
           </View>
         </Animated.View>
 
+        <Animated.View entering={FadeInDown.duration(400).delay(60)}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
+            SOUND
+          </Text>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.surface, borderColor: colors.borderLight },
+            ]}
+          >
+            <View style={styles.row}>
+              <View style={[styles.rowIcon, { backgroundColor: colors.surfaceSecondary }]}>
+                <Volume2 size={18} color={colors.text} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>UI sounds</Text>
+                <Text style={[styles.rowSubLabel, { color: colors.textTertiary }]}>
+                  Soft chime on bookings, payouts & notifications
+                </Text>
+              </View>
+              <Switch
+                value={soundEnabled}
+                onValueChange={(val) => {
+                  haptics.select();
+                  setSoundEnabled(val);
+                  if (val) playChime();
+                }}
+                trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
+                thumbColor="#fff"
+                accessibilityRole="switch"
+                accessibilityLabel="UI sounds: Soft chime on bookings, payouts & notifications"
+                accessibilityState={{ checked: soundEnabled }}
+              />
+            </View>
+          </View>
+        </Animated.View>
+
         <Animated.View entering={FadeInDown.duration(400).delay(80)}>
           <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
             PUSH NOTIFICATIONS
@@ -248,7 +290,7 @@ export default function PreferencesScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(400).delay(160)}>
+        <Animated.View entering={FadeInDown.duration(400).delay(200)}>
           <View style={styles.emailSectionHeader}>
             <Mail size={14} color={colors.textTertiary} strokeWidth={2} />
             <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>

@@ -12,9 +12,10 @@ interface CardProps {
   onPress?: () => void;
   padding?: number;
   accessibilityLabel?: string;
+  accessibilityRole?: string;
 }
 
-export function Card({ children, style, onPress, padding, accessibilityLabel }: CardProps) {
+export function Card({ children, style, onPress, padding, accessibilityLabel, accessibilityRole }: CardProps) {
   const { colors } = useTheme();
   const haptics = useHaptics();
 
@@ -37,7 +38,7 @@ export function Card({ children, style, onPress, padding, accessibilityLabel }: 
       <PressableScale
         onPress={handlePress}
         style={[cardStyle, style]}
-        accessibilityRole="button"
+        accessibilityRole={(accessibilityRole ?? 'button') as any}
         accessibilityLabel={accessibilityLabel}
       >
         {children}
@@ -46,7 +47,11 @@ export function Card({ children, style, onPress, padding, accessibilityLabel }: 
   }
 
   return (
-    <Animated.View style={[cardStyle, style]}>
+    <Animated.View
+      style={[cardStyle, style]}
+      accessibilityRole={accessibilityRole as any}
+      accessibilityLabel={accessibilityLabel}
+    >
       {children}
     </Animated.View>
   );

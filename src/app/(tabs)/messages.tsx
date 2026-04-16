@@ -30,10 +30,10 @@ interface ConversationRowProps {
   onPress: (conversation: Conversation) => void;
 }
 
-import { formatRelative } from '../../lib/dateFormat';
+import { formatSmartDate } from '../../lib/dateFormat';
 
 function formatTime(dateStr: string): string {
-  return formatRelative(dateStr);
+  return formatSmartDate(dateStr);
 }
 
 function ConversationSkeleton() {

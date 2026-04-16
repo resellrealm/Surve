@@ -37,13 +37,6 @@ import {
   Search,
   ChevronUp,
   ChevronDown,
-  ThumbsUp,
-  Heart,
-  Laugh,
-  AlertCircle,
-  Frown,
-  HandHeart,
-  type LucideIcon,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { moderateText, friendlyFlagReason } from '../../lib/moderation';
@@ -53,6 +46,7 @@ import { useStore } from '../../lib/store';
 import { Avatar } from '../../components/ui/Avatar';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { PressableScale } from '../../components/ui/PressableScale';
+import { ThemedText } from '../../components/ui/ThemedText';
 import { ErrorState } from '../../components/ui/ErrorState';
 import * as api from '../../lib/api';
 import {
@@ -62,34 +56,20 @@ import {
   Shadows,
   Springs,
 } from '../../constants/theme';
-import { formatDateCompact, formatTime as formatLocaleTime } from '../../lib/dateFormat';
+import { formatDateCompact, formatRelative } from '../../lib/dateFormat';
 import type { Message } from '../../types';
 
-const REACTION_ICONS: { name: ReactionIconName; Icon: LucideIcon; label: string }[] = [
-  { name: 'thumbs_up', Icon: ThumbsUp, label: 'Thumbs up' },
-  { name: 'heart', Icon: Heart, label: 'Heart' },
-  { name: 'laugh', Icon: Laugh, label: 'Laugh' },
-  { name: 'wow', Icon: AlertCircle, label: 'Wow' },
-  { name: 'sad', Icon: Frown, label: 'Sad' },
-  { name: 'care', Icon: HandHeart, label: 'Care' },
+// Emoji reactions: the emoji character is the key stored in DB
+const REACTION_EMOJIS: { emoji: string; label: string }[] = [
+  { emoji: '👍', label: 'Thumbs up' },
+  { emoji: '❤️', label: 'Heart' },
+  { emoji: '😂', label: 'Laugh' },
+  { emoji: '😮', label: 'Wow' },
+  { emoji: '😢', label: 'Sad' },
+  { emoji: '🙏', label: 'Grateful' },
 ];
 
-type ReactionIconName =
-  | 'thumbs_up'
-  | 'heart'
-  | 'laugh'
-  | 'wow'
-  | 'sad'
-  | 'care';
-
-const REACTION_ICON_MAP: Record<ReactionIconName, LucideIcon> = {
-  thumbs_up: ThumbsUp,
-  heart: Heart,
-  laugh: Laugh,
-  wow: AlertCircle,
-  sad: Frown,
-  care: HandHeart,
-};
+type ReactionIconName = string; // emoji character (e.g. '👍')
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -113,7 +93,7 @@ function dayLabel(dateStr: string): string {
 }
 
 function formatMessageTime(dateStr: string): string {
-  return formatLocaleTime(dateStr);
+  return formatRelative(dateStr);
 }
 
 function buildRows(messages: Message[]): ListRow[] {
@@ -151,6 +131,7 @@ interface MessageBubbleProps {
   status: MessageStatus | null;
   currentUserId: string;
   colors: ReturnType<typeof useTheme>['colors'];
+  isDark: boolean;
   onLongPress: () => void;
   onReaction: (icon: ReactionIconName) => void;
   reactions: Record<ReactionIconName, string[]>;
@@ -224,7 +205,6 @@ function ReactionPill({
   const scale = useSharedValue(1);
   const particleProgress = useSharedValue(0);
   const haptics = useHaptics();
-  const Icon = REACTION_ICON_MAP[iconName];
 
   const handlePress = useCallback(() => {
     haptics.confirm();
@@ -272,16 +252,17 @@ function ReactionPill({
           trigger={particleProgress}
         />
       ))}
-      <Icon size={14} color={tint} strokeWidth={2} />
+      <Text style={styles.reactionPillEmoji}>{iconName}</Text>
       {users.length > 1 && (
-        <Text
+        <ThemedText
+          variant="caption2"
           style={[
             styles.reactionPillCount,
             { color: tint },
           ]}
         >
           {users.length}
-        </Text>
+        </ThemedText>
       )}
     </AnimatedPressable>
   );
@@ -322,16 +303,14 @@ function ReactionPills({
 }
 
 function ReactionPickerItem({
-  iconName,
+  emoji,
   label,
-  Icon,
   onSelect,
   colors,
 }: {
-  iconName: ReactionIconName;
+  emoji: string;
   label: string;
-  Icon: LucideIcon;
-  onSelect: (icon: ReactionIconName) => void;
+  onSelect: (emoji: string) => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const haptics = useHaptics();
@@ -341,7 +320,7 @@ function ReactionPickerItem({
   const handlePress = useCallback(() => {
     haptics.confirm();
     scale.value = withSequence(
-      withSpring(1.35, Springs.snappy),
+      withSpring(1.4, Springs.snappy),
       withSpring(1, Springs.bouncy),
     );
     particleProgress.value = 0;
@@ -349,8 +328,8 @@ function ReactionPickerItem({
       duration: 400,
       easing: Easing.out(Easing.cubic),
     });
-    onSelect(iconName);
-  }, [iconName, onSelect, haptics, scale, particleProgress]);
+    onSelect(emoji);
+  }, [emoji, onSelect, haptics, scale, particleProgress]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -372,7 +351,7 @@ function ReactionPickerItem({
           trigger={particleProgress}
         />
       ))}
-      <Icon size={24} color={colors.text} strokeWidth={2} />
+      <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
     </AnimatedPressable>
   );
 }
@@ -384,7 +363,7 @@ function ReactionPicker({
 }: {
   isSent: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
-  onSelect: (icon: ReactionIconName) => void;
+  onSelect: (emoji: string) => void;
 }) {
   return (
     <Animated.View
@@ -396,11 +375,10 @@ function ReactionPicker({
         isSent ? styles.pickerSent : styles.pickerReceived,
       ]}
     >
-      {REACTION_ICONS.map(({ name, Icon, label }) => (
+      {REACTION_EMOJIS.map(({ emoji, label }) => (
         <ReactionPickerItem
-          key={name}
-          iconName={name}
-          Icon={Icon}
+          key={emoji}
+          emoji={emoji}
           label={label}
           onSelect={onSelect}
           colors={colors}
@@ -422,7 +400,7 @@ function HighlightedText({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   if (!query) {
-    return <Text style={[styles.messageText, { color: baseColor }]}>{text}</Text>;
+    return <ThemedText variant="body" style={[styles.messageText, { color: baseColor }]}>{text}</ThemedText>;
   }
   const parts: { text: string; match: boolean }[] = [];
   const lowerText = text.toLowerCase();
@@ -438,7 +416,7 @@ function HighlightedText({
   if (cursor < text.length) parts.push({ text: text.slice(cursor), match: false });
 
   return (
-    <Text style={[styles.messageText, { color: baseColor }]}>
+    <ThemedText variant="body" style={[styles.messageText, { color: baseColor }]}>
       {parts.map((p, i) =>
         p.match ? (
           <Text
@@ -455,7 +433,7 @@ function HighlightedText({
           <Text key={i}>{p.text}</Text>
         )
       )}
-    </Text>
+    </ThemedText>
   );
 }
 
@@ -465,6 +443,7 @@ function MessageBubble({
   status,
   currentUserId,
   colors,
+  isDark,
   onLongPress,
   onReaction,
   reactions,
@@ -473,6 +452,11 @@ function MessageBubble({
 }: MessageBubbleProps) {
   const [showPicker, setShowPicker] = useState(false);
   const haptics = useHaptics();
+  // In dark mode the primary bubble (#5B7BF7) is a medium-light blue; white at 65% opacity
+  // yields only ~2.5:1 contrast. Flip to dark-on-light in dark mode so AA is satisfied.
+  const sentMetaColor = isDark ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.75)';
+  const sentIconColor = isDark ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.85)';
+  const sentReadColor = isDark ? 'rgba(0,0,0,0.75)' : '#B8D0FF';
 
   const handleDoubleTap = useCallback(() => {
     haptics.tap();
@@ -534,27 +518,28 @@ function MessageBubble({
             colors={colors}
           />
           <View style={styles.metaRow}>
-            <Text
+            <ThemedText
+              variant="caption2"
               style={[
                 styles.messageTime,
                 {
-                  color: isSent ? 'rgba(255,255,255,0.65)' : colors.textTertiary,
+                  color: isSent ? sentMetaColor : colors.textTertiary,
                 },
               ]}
             >
               {formatMessageTime(message.created_at)}
-            </Text>
+            </ThemedText>
             {status === 'sending' && (
-              <Clock size={12} color="rgba(255,255,255,0.65)" strokeWidth={2} />
+              <Clock size={12} color={sentIconColor} strokeWidth={2} />
             )}
             {status === 'sent' && (
-              <Check size={14} color="rgba(255,255,255,0.8)" strokeWidth={2.5} />
+              <Check size={14} color={sentIconColor} strokeWidth={2.5} />
             )}
             {status === 'delivered' && (
-              <CheckCheck size={14} color="rgba(255,255,255,0.8)" strokeWidth={2.5} />
+              <CheckCheck size={14} color={sentIconColor} strokeWidth={2.5} />
             )}
             {status === 'read' && (
-              <CheckCheck size={14} color="#B8D0FF" strokeWidth={2.5} />
+              <CheckCheck size={14} color={sentReadColor} strokeWidth={2.5} />
             )}
           </View>
         </View>
@@ -642,7 +627,7 @@ function TypingIndicator({
           ))}
         </View>
       </View>
-      <Text style={[styles.typingLabel, { color: colors.textTertiary }]}>typing</Text>
+      <ThemedText variant="caption2" style={[styles.typingLabel, { color: colors.textTertiary }]}>typing</ThemedText>
     </Animated.View>
   );
 }
@@ -651,9 +636,10 @@ export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const conversations = useStore((s) => s.conversations);
   const fetchConversations = useStore((s) => s.fetchConversations);
+  const messagesLoading = useStore((s) => s.messagesLoading);
   const currentUserId = useStore((s) => s.user?.id) ?? '';
   const haptics = useHaptics();
   const isOffline = useIsOffline();
@@ -675,9 +661,9 @@ export default function ChatDetailScreen() {
   const [counterpartyTyping, setCounterpartyTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [deliveredIds, setDeliveredIds] = useState<Set<string>>(new Set());
-  // Server-sourced reactions: messageId -> iconName -> userIds[]
+  // Server-sourced reactions: messageId -> emoji -> userIds[]
   const [reactionsByMessage, setReactionsByMessage] = useState<
-    Record<string, Record<ReactionIconName, string[]>>
+    Record<string, Record<string, string[]>>
   >({});
   const [showScrollFab, setShowScrollFab] = useState(false);
   const distanceFromBottom = useRef(0);
@@ -702,6 +688,7 @@ export default function ChatDetailScreen() {
 
   const flatListRef = useRef<FlatList<ListRow>>(null);
   const typingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const broadcastTypingRef = useRef<() => void>(() => {});
   const lastTypingBroadcast = useRef<number>(0);
 
@@ -752,16 +739,16 @@ export default function ChatDetailScreen() {
     const loadReactions = () => {
       api.getConversationReactions(id).then((rows) => {
         if (cancelled) return;
-        const map: Record<string, Record<ReactionIconName, string[]>> = {};
+        const map: Record<string, Record<string, string[]>> = {};
         for (const r of rows) {
-          const icon = r.icon_name as ReactionIconName;
-          if (!REACTION_ICON_MAP[icon]) continue;
+          const emoji = r.emoji;
+          if (!emoji) continue;
           if (!map[r.message_id]) {
-            map[r.message_id] = {} as Record<ReactionIconName, string[]>;
+            map[r.message_id] = {};
           }
           const perMsg = map[r.message_id];
-          if (!perMsg[icon]) perMsg[icon] = [];
-          perMsg[icon].push(r.user_id);
+          if (!perMsg[emoji]) perMsg[emoji] = [];
+          perMsg[emoji].push(r.user_id);
         }
         setReactionsByMessage(map);
       });
@@ -787,16 +774,27 @@ export default function ChatDetailScreen() {
       unsubReactions();
       typing.unsubscribe();
       if (typingClearTimer.current) clearTimeout(typingClearTimer.current);
+      if (typingDebounceTimer.current) clearTimeout(typingDebounceTimer.current);
     };
   }, [id, currentUserId]);
 
   const handleInputChange = useCallback((t: string) => {
     setInputText(t);
+    if (t.length === 0) return;
+
+    // If it's been >2.5 s since the last broadcast, fire immediately (leading edge)
+    // so the other party sees the indicator with no perceptible delay.
+    // Otherwise debounce at 800 ms so we don't spam the channel on every keystroke.
     const now = Date.now();
-    // Throttle typing broadcast to ~every 1.5s while the user is actively typing
-    if (t.length > 0 && now - lastTypingBroadcast.current > 1500) {
+    if (now - lastTypingBroadcast.current > 2500) {
       lastTypingBroadcast.current = now;
       broadcastTypingRef.current();
+    } else {
+      if (typingDebounceTimer.current) clearTimeout(typingDebounceTimer.current);
+      typingDebounceTimer.current = setTimeout(() => {
+        lastTypingBroadcast.current = Date.now();
+        broadcastTypingRef.current();
+      }, 800);
     }
   }, []);
 
@@ -1090,9 +1088,9 @@ export default function ChatDetailScreen() {
         return (
           <View style={styles.dateSeparator}>
             <View style={[styles.dateLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dateText, { color: colors.textTertiary }]}>
+            <ThemedText variant="caption1" style={[styles.dateText, { color: colors.textTertiary }]}>
               {item.label}
-            </Text>
+            </ThemedText>
             <View style={[styles.dateLine, { backgroundColor: colors.border }]} />
           </View>
         );
@@ -1106,6 +1104,7 @@ export default function ChatDetailScreen() {
           status={statusFor(m, currentUserId, counterpartyLastRead, deliveredIds)}
           currentUserId={currentUserId}
           colors={colors}
+          isDark={isDark}
           onLongPress={() => handleLongPress(m)}
           onReaction={(icon) => handleReaction(m, icon)}
           reactions={reactionsByMessage[m.id] ?? ({} as Record<ReactionIconName, string[]>)}
@@ -1114,8 +1113,18 @@ export default function ChatDetailScreen() {
         />
       );
     },
-    [colors, counterpartyLastRead, deliveredIds, currentUserId, handleLongPress, handleReaction, reactionsByMessage, searchQuery, searchResults, activeResultId]
+    [colors, isDark, counterpartyLastRead, deliveredIds, currentUserId, handleLongPress, handleReaction, reactionsByMessage, searchQuery, searchResults, activeResultId]
   );
+
+  if (!conversation && messagesLoading) {
+    // Conversations are still fetching — show a neutral loading shell so we
+    // don't flash a false-positive error state on fresh load / deep-link.
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <ScreenHeader title="Loading…" />
+      </View>
+    );
+  }
 
   if (!conversation) {
     return (
@@ -1178,6 +1187,8 @@ export default function ChatDetailScreen() {
               returnKeyType="search"
               autoCapitalize="none"
               autoCorrect={false}
+              allowFontScaling
+              maxFontSizeMultiplier={1.6}
             />
             {searchQuery.length > 0 && (
               <PressableScale
@@ -1193,9 +1204,9 @@ export default function ChatDetailScreen() {
           </View>
           {searchResults.length > 0 && (
             <View style={styles.searchNav}>
-              <Text style={[Typography.caption1, { color: colors.textSecondary }]}>
+              <ThemedText variant="caption1" style={{ color: colors.textSecondary }}>
                 {activeResultIdx + 1}/{searchResults.length}{searchHasMore ? '+' : ''}
-              </Text>
+              </ThemedText>
               <PressableScale
                 onPress={() => navigateResult('prev')}
                 disabled={activeResultIdx === 0}
@@ -1229,9 +1240,9 @@ export default function ChatDetailScreen() {
             </View>
           )}
           {searchQuery.length > 0 && searchResults.length === 0 && !searchLoading && (
-            <Text style={[Typography.caption1, { color: colors.textTertiary, marginLeft: Spacing.sm }]}>
+            <ThemedText variant="caption1" style={{ color: colors.textTertiary, marginLeft: Spacing.sm }}>
               No results
-            </Text>
+            </ThemedText>
           )}
         </Animated.View>
       )}
@@ -1315,15 +1326,16 @@ export default function ChatDetailScreen() {
           >
             <Reply size={16} color={colors.primary} strokeWidth={2} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.replyKicker, { color: colors.primary }]}>
+              <ThemedText variant="caption2" style={[styles.replyKicker, { color: colors.primary }]}>
                 Replying to {replyTo.sender_id === currentUserId ? 'yourself' : conversation.participant_name}
-              </Text>
-              <Text
+              </ThemedText>
+              <ThemedText
+                variant="footnote"
                 style={[styles.replyPreview, { color: colors.textSecondary }]}
                 numberOfLines={1}
               >
                 {replyTo.text}
-              </Text>
+              </ThemedText>
             </View>
             <PressableScale onPress={() => setReplyTo(null)} scaleValue={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel reply">
               <X size={18} color={colors.textTertiary} strokeWidth={2} />
@@ -1360,10 +1372,13 @@ export default function ChatDetailScreen() {
                 multiline
                 maxLength={1000}
                 returnKeyType="default"
+                allowFontScaling
+                maxFontSizeMultiplier={1.5}
               />
             </View>
             {inputText.length > 0 && (
-              <Text
+              <ThemedText
+                variant="caption2"
                 style={[
                   styles.chatCharCount,
                   {
@@ -1377,7 +1392,7 @@ export default function ChatDetailScreen() {
                 ]}
               >
                 {inputText.length}/1000
-              </Text>
+              </ThemedText>
             )}
           </View>
 
@@ -1509,9 +1524,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

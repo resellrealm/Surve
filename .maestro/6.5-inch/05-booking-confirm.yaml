@@ -1,0 +1,8 @@
+appId: com.surve.creator
+---
+- launchApp:
+    clearState: false
+- openLink: "surve://(payment)/success"
+- waitForAnimationToEnd
+- assertVisible: "Booking confirmed"
+- takeScreenshot: "../docs/screenshots/6.5-inch/05-booking-confirm"

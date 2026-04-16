@@ -15,6 +15,9 @@ const AnimatedTextInput = Animated.createAnimatedComponent(
 interface AnimatedNumberProps {
   value: number;
   duration?: number;
+  /** Pass `currency="USD"` to format via Intl.NumberFormat (preferred). */
+  currency?: string;
+  /** Legacy: plain string prefix prepended before the number (e.g. '$'). Use `currency` instead. */
   prefix?: string;
   style?: TextStyle;
   formatOptions?: Intl.NumberFormatOptions;
@@ -23,6 +26,7 @@ interface AnimatedNumberProps {
 export function AnimatedNumber({
   value,
   duration = 800,
+  currency,
   prefix = '',
   style,
   formatOptions,
@@ -44,11 +48,23 @@ export function AnimatedNumber({
 
   const animatedProps = useAnimatedProps(() => {
     const v = Math.round(animatedValue.value);
-    return {
-      text: `${prefix}${v.toLocaleString()}`,
-      defaultValue: `${prefix}${v.toLocaleString()}`,
-    } as Record<string, string>;
+    let text: string;
+    if (currency) {
+      text = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(v);
+    } else {
+      text = `${prefix}${v.toLocaleString()}`;
+    }
+    return { text, defaultValue: text } as Record<string, string>;
   });
+
+  const a11yLabel = currency
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency, ...formatOptions }).format(value)
+    : `${prefix}${value.toLocaleString(undefined, formatOptions)}`;
 
   return (
     <AnimatedTextInput
@@ -56,7 +72,7 @@ export function AnimatedNumber({
       editable={false}
       accessible
       accessibilityRole="text"
-      accessibilityLabel={`${prefix}${value.toLocaleString(undefined, formatOptions)}`}
+      accessibilityLabel={a11yLabel}
       style={[style, { padding: 0, margin: 0 }]}
       animatedProps={animatedProps}
     />

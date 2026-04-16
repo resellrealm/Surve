@@ -1,0 +1,8 @@
+appId: com.surve.creator
+---
+- launchApp:
+    clearState: false
+- openLink: "surve://(chat)/seed-conversation-1"
+- waitForAnimationToEnd
+- assertVisible: "Type a message"
+- takeScreenshot: "../docs/screenshots/5.5-inch/04-chat"

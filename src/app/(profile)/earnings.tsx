@@ -17,6 +17,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
+import { useChime } from '../../hooks/useChime';
 import { toast } from '../../lib/toast';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -118,6 +119,7 @@ export default function EarningsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
+  const { playChime } = useChime();
 
   const user = useStore((s) => s.user);
   const userId = user?.id ?? '';
@@ -165,6 +167,16 @@ export default function EarningsScreen() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Play chime once after first load when creator has received payouts —
+  // signals "payout received" to the user if sound is enabled.
+  const payoutChimePlayedRef = React.useRef(false);
+  useEffect(() => {
+    if (!loading && !payoutChimePlayedRef.current && earnings.lifetime > 0) {
+      payoutChimePlayedRef.current = true;
+      playChime();
+    }
+  }, [loading, earnings.lifetime, playChime]);
 
   const visibleTransactions = useMemo(
     () => transactions.slice(0, visibleCount),
@@ -266,7 +278,7 @@ export default function EarningsScreen() {
           <Text style={[styles.heroLabel, { color: 'rgba(255,255,255,0.8)' }]}>Lifetime earnings</Text>
           <AnimatedNumber
             value={earnings.lifetime}
-            prefix="$"
+            currency="USD"
             style={[styles.heroAmount, { color: colors.onPrimary }] as never}
           />
           <View style={styles.heroRow}>
@@ -274,7 +286,7 @@ export default function EarningsScreen() {
               <Text style={[styles.heroStatLabel, { color: 'rgba(255,255,255,0.7)' }]}>This month</Text>
               <AnimatedNumber
                 value={earnings.thisMonth}
-                prefix="$"
+                currency="USD"
                 duration={800}
                 style={[styles.heroStatValue, { color: colors.onPrimary }] as never}
               />
@@ -284,7 +296,7 @@ export default function EarningsScreen() {
               <Text style={[styles.heroStatLabel, { color: 'rgba(255,255,255,0.7)' }]}>Pending</Text>
               <AnimatedNumber
                 value={earnings.pending}
-                prefix="$"
+                currency="USD"
                 duration={800}
                 style={[styles.heroStatValue, { color: colors.onPrimary }] as never}
               />

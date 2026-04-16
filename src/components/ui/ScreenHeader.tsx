@@ -1,12 +1,13 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { PressableScale } from './PressableScale';
-import { Typography, Spacing } from '../../constants/theme';
+import { ThemedText } from './ThemedText';
+import { Spacing } from '../../constants/theme';
 
 interface ScreenHeaderProps {
   title?: string;
@@ -72,12 +73,13 @@ export function ScreenHeader({
 
         <View style={styles.titleWrap} pointerEvents="none">
           {title ? (
-            <Text
+            <ThemedText
+              variant="headline"
               numberOfLines={1}
               style={[styles.title, { color: colors.text }]}
             >
               {title}
-            </Text>
+            </ThemedText>
           ) : null}
         </View>
 
@@ -121,7 +123,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   title: {
-    ...Typography.headline,
     textAlign: 'center',
   },
 });

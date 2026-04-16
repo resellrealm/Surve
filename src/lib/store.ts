@@ -213,6 +213,7 @@ const defaultBusinessDraft: BusinessDraft = {
 interface FavoritesState {
   savedListings: string[];
   followedCreators: string[];
+  hiddenCreators: string[];
 }
 
 interface FavoritesActions {
@@ -221,6 +222,7 @@ interface FavoritesActions {
   isListingSaved: (listingId: string) => boolean;
   isCreatorFollowed: (creatorId: string) => boolean;
   fetchFavorites: () => Promise<void>;
+  hideCreator: (creatorId: string) => void;
 }
 
 // ─── UI Slice ────────────────────────────────────────────────────────────────
@@ -235,6 +237,8 @@ export interface SearchFiltersSession {
   engagement: string;
   sortBy: string;
   mode: 'listings' | 'creators';
+  payRange: string;
+  location: string;
 }
 
 export const defaultSearchFilters: SearchFiltersSession = {
@@ -245,6 +249,8 @@ export const defaultSearchFilters: SearchFiltersSession = {
   engagement: 'all',
   sortBy: 'newest',
   mode: 'listings',
+  payRange: 'all',
+  location: '',
 };
 
 const SOUND_ENABLED_KEY = 'surve.soundEnabled';
@@ -514,21 +520,23 @@ export const useStore = create<AppStore>((set, get) => ({
   markConversationRead: (conversationId) => {
     const prev = get().conversations;
     const convo = prev.find((c) => c.id === conversationId);
+    // Always upsert last_read_at to message_reads so counterparty gets a
+    // read receipt, regardless of whether the local unread badge is already 0.
+    const userId = get().user?.id;
+    if (userId) {
+      api.markConversationRead(userId, conversationId).then((ok) => {
+        if (!ok) {
+          toast.error('Failed to sync read status');
+        }
+      });
+    }
+    // Only update local badge when there are unread messages to clear.
     if (!convo || convo.unread_count === 0) return;
     set({
       conversations: prev.map((c) =>
         c.id === conversationId ? { ...c, unread_count: 0 } : c
       ),
     });
-    const userId = get().user?.id;
-    if (userId) {
-      api.markConversationRead(userId, conversationId).then((ok) => {
-        if (!ok) {
-          set({ conversations: prev });
-          toast.error('Failed to sync read status');
-        }
-      });
-    }
   },
 
   // Onboarding state
@@ -552,6 +560,7 @@ export const useStore = create<AppStore>((set, get) => ({
   // Favorites state
   savedListings: [],
   followedCreators: [],
+  hiddenCreators: [],
 
   // Favorites actions — optimistic with server sync + rollback
   toggleSavedListing: (listingId) => {
@@ -598,6 +607,12 @@ export const useStore = create<AppStore>((set, get) => ({
   },
   isListingSaved: (listingId) => get().savedListings.includes(listingId),
   isCreatorFollowed: (creatorId) => get().followedCreators.includes(creatorId),
+  hideCreator: (creatorId) =>
+    set((state) => ({
+      hiddenCreators: state.hiddenCreators.includes(creatorId)
+        ? state.hiddenCreators
+        : [...state.hiddenCreators, creatorId],
+    })),
 
   fetchFavorites: async () => {
     const userId = get().user?.id;

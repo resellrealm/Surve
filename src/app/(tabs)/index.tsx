@@ -2,7 +2,6 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   StyleSheet,
   View,
-  Text,
   FlatList,
   RefreshControl,
   Platform,
@@ -35,6 +34,7 @@ import { CreatorCard } from '../../components/creator/CreatorCard';
 import { BusinessDashboard } from '../../components/dashboard/BusinessDashboard';
 import { Avatar } from '../../components/ui/Avatar';
 import { Skeleton, ListingCardSkeleton } from '../../components/ui/Skeleton';
+import { ThemedText } from '../../components/ui/ThemedText';
 import { categories } from '../../constants/filters';
 import * as api from '../../lib/api';
 import { Typography, Spacing, BorderRadius, Layout } from '../../constants/theme';
@@ -211,12 +211,12 @@ export default function HomeScreen() {
           <View style={[styles.errorIcon, { backgroundColor: colors.cancelledLight }]}>
             <AlertTriangle size={40} color={colors.error} strokeWidth={1.5} />
           </View>
-          <Text style={[styles.errorTitle, { color: colors.text }]}>
+          <ThemedText variant="title3" style={[styles.errorTitle, { color: colors.text }]}>
             Couldn't load listings
-          </Text>
-          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+          </ThemedText>
+          <ThemedText variant="subheadline" style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
             {listingsError}
-          </Text>
+          </ThemedText>
           <PressableScale
             onPress={handleRefresh}
             style={[styles.retryButton, { backgroundColor: colors.primary }]}
@@ -224,7 +224,7 @@ export default function HomeScreen() {
             accessibilityLabel="Retry loading listings"
           >
             <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
-            <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
+            <ThemedText variant="subheadline" style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</ThemedText>
           </PressableScale>
         </View>
       </View>
@@ -246,14 +246,14 @@ export default function HomeScreen() {
         entering={FadeInDown.duration(400).delay(100)}
         style={styles.titleSection}
       >
-        <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+        <ThemedText variant="title1" style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
           {isBusiness ? 'Your Listings' : 'Discover Opportunities'}
-        </Text>
-        <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+        </ThemedText>
+        <ThemedText variant="subheadline" style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
           {isBusiness
             ? `${filteredListings.length} active listings`
             : `${filteredListings.length} listings available`}
-        </Text>
+        </ThemedText>
       </Animated.View>
 
       {isBusiness && (
@@ -271,21 +271,19 @@ export default function HomeScreen() {
             accessibilityLabel="Create new listing"
           >
             <Plus size={20} color={colors.onPrimary} strokeWidth={2} />
-            <Text style={[styles.createListingText, { color: colors.onPrimary }]}>Create New Listing</Text>
+            <ThemedText variant="callout" style={[styles.createListingText, { color: colors.onPrimary }]}>Create New Listing</ThemedText>
           </PressableScale>
         </Animated.View>
       )}
 
       {isBusiness && topCreators.length > 0 && (
         <Animated.View entering={FadeInDown.duration(400).delay(200)}>
-          <Text
-            style={[
-              styles.sectionSubtitle,
-              { color: colors.text, paddingHorizontal: Spacing.lg, marginBottom: Spacing.md, fontWeight: '600', fontSize: 17 },
-            ]}
+          <ThemedText
+            variant="headline"
+            style={{ color: colors.text, paddingHorizontal: Spacing.lg, marginBottom: Spacing.md }}
           >
             Top Creators
-          </Text>
+          </ThemedText>
           <FlatList
             horizontal
             data={topCreators}
@@ -326,14 +324,14 @@ export default function HomeScreen() {
       <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceSecondary }]}>
         <Compass size={40} color={colors.textTertiary} strokeWidth={1.5} />
       </View>
-      <Text style={[styles.emptyTitle, { color: colors.text }]}>
+      <ThemedText variant="title3" style={[styles.emptyTitle, { color: colors.text }]}>
         No listings yet
-      </Text>
-      <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+      </ThemedText>
+      <ThemedText variant="subheadline" style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
         {isBusiness
           ? 'Create your first listing to connect with creators'
           : 'Check back soon for new opportunities'}
-      </Text>
+      </ThemedText>
       {isBusiness && (
         <PressableScale
           onPress={handleCreateListing}
@@ -341,7 +339,7 @@ export default function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel="Create your first listing"
         >
-          <Text style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Create Listing</Text>
+          <ThemedText variant="subheadline" style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Create Listing</ThemedText>
         </PressableScale>
       )}
     </Animated.View>
@@ -396,12 +394,12 @@ export default function HomeScreen() {
               size={40}
             />
             <View style={styles.headerText}>
-              <Text style={[styles.greeting, { color: colors.textSecondary }]} accessibilityRole="text">
+              <ThemedText variant="caption1" style={[styles.greeting, { color: colors.textSecondary }]} accessibilityRole="text">
                 Welcome back
-              </Text>
-              <Text style={[styles.userName, { color: colors.text }]} accessibilityRole="header">
+              </ThemedText>
+              <ThemedText variant="headline" style={[styles.userName, { color: colors.text }]} accessibilityRole="header">
                 {user?.full_name ?? 'User'}
-              </Text>
+              </ThemedText>
             </View>
           </View>
           <PressableScale
@@ -461,9 +459,9 @@ const styles = StyleSheet.create({
     ...Typography.headline,
   },
   notifButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

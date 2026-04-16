@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { Typography, Spacing, BorderRadius } from '../../constants/theme';
+import { ThemedText } from './ThemedText';
+import { Spacing, BorderRadius } from '../../constants/theme';
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info';
 
@@ -29,15 +30,13 @@ export function Badge({ text, variant = 'default', style, small = false }: Badge
         style,
       ]}
     >
-      <Text
-        style={[
-          small ? Typography.caption2 : Typography.caption1,
-          { color: variantStyles.text, fontWeight: '600' },
-        ]}
+      <ThemedText
+        variant={small ? 'caption2' : 'caption1'}
+        style={{ color: variantStyles.text, fontWeight: '600' }}
         numberOfLines={1}
       >
         {text}
-      </Text>
+      </ThemedText>
     </View>
   );
 }

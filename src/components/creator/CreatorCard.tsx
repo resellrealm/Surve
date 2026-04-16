@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Star } from 'lucide-react-native';
 import { useHaptics } from '../../hooks/useHaptics';
 import { Avatar } from '../ui/Avatar';
@@ -7,11 +7,11 @@ import { PlatformBadge } from './PlatformBadge';
 import { StatsRow } from './StatsRow';
 import { Badge } from '../ui/Badge';
 import { PressableScale } from '../ui/PressableScale';
+import { ThemedText } from '../ui/ThemedText';
 import { ContextMenu } from '../ui/ContextMenu';
 import { useCreatorContextActions } from '../../hooks/useCardContextActions';
 import { useTheme } from '../../hooks/useTheme';
 import {
-  Typography,
   Spacing,
   BorderRadius,
   Shadows,
@@ -65,37 +65,40 @@ export function CreatorCard({ creator, onPress }: CreatorCardProps) {
         />
         <View style={styles.headerInfo}>
           <View style={styles.nameRow}>
-            <Text
+            <ThemedText
+              variant="headline"
               style={[styles.name, { color: colors.text }]}
               numberOfLines={1}
             >
               {creator.user.full_name}
-            </Text>
+            </ThemedText>
             {creator.verified && (
               <Badge text="Verified" variant="primary" small />
             )}
           </View>
-          <Text
+          <ThemedText
+            variant="caption1"
             style={[styles.location, { color: colors.textSecondary }]}
             numberOfLines={1}
           >
             {creator.location}
-          </Text>
+          </ThemedText>
         </View>
         <View style={styles.ratingContainer}>
           <Star size={14} color={colors.rating} fill={colors.rating} strokeWidth={2} />
-          <Text style={[styles.rating, { color: colors.text }]}>
+          <ThemedText variant="subheadline" style={[styles.rating, { color: colors.text }]}>
             {creator.rating.toFixed(1)}
-          </Text>
+          </ThemedText>
         </View>
       </View>
 
-      <Text
+      <ThemedText
+        variant="subheadline"
         style={[styles.bio, { color: colors.textSecondary }]}
         numberOfLines={2}
       >
         {creator.bio}
-      </Text>
+      </ThemedText>
 
       <View style={styles.platformRow}>
         <PlatformBadge platform={platform} />
@@ -134,11 +137,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  name: {
-    ...Typography.headline,
-  },
+  name: {},
   location: {
-    ...Typography.caption1,
     marginTop: Spacing.xxs,
   },
   ratingContainer: {
@@ -147,11 +147,9 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   rating: {
-    ...Typography.subheadline,
     fontWeight: '600',
   },
   bio: {
-    ...Typography.subheadline,
     marginBottom: Spacing.md,
   },
   platformRow: {

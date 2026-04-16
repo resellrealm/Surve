@@ -118,6 +118,16 @@ export const filterTemplates: FilterTemplate[] = [
   },
 ];
 
+// ─── Pay Range Presets ──────────────────────────────────────────────────────
+
+export const payRanges = [
+  { key: 'all' as const, label: 'Any', min: null as number | null, max: null as number | null },
+  { key: 'gifted' as const, label: 'Gifted / Free', min: 0, max: 0 },
+  { key: 'budget' as const, label: 'Up to $100', min: 1, max: 100 },
+  { key: 'mid' as const, label: '$100–$500', min: 100, max: 500 },
+  { key: 'premium' as const, label: '$500+', min: 500, max: null as number | null },
+];
+
 // ─── Platforms List ──────────────────────────────────────────────────────────
 
 export const platforms = [

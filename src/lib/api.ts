@@ -24,9 +24,14 @@ import type {
   Application,
   CreatorAnalytics,
   CreatorFilters,
+  CreatorSocialAccount,
+  SocialPlatform,
   ListingAnalyticsSummary,
   UserStats,
+  Boost,
+  BoostStatus,
 } from '../types';
+import { BOOST_TIERS, type BoostTierKey } from '../constants/pricing';
 
 // Fallback to curated demo content when the DB is empty (dev + screenshots).
 // Flip off for production to always hit the real DB.
@@ -111,9 +116,36 @@ export function mapCreator(row: any): Creator {
     total_bookings: row.total_bookings ?? 0,
     location: row.location ?? '',
     verified: row.verified ?? false,
+    cover_photo_url: row.cover_photo_url ?? null,
+    niches: row.niches ?? null,
+    languages: row.languages ?? null,
+    intro_video_url: row.intro_video_url ?? null,
+    response_time_hours: row.response_time_hours != null ? Number(row.response_time_hours) : null,
+    completion_rate: row.completion_rate != null ? Number(row.completion_rate) : null,
+    highlight_metrics: row.highlight_metrics ?? null,
     show_rates_publicly: row.show_rates_publicly ?? false,
     stripe_account_id: row.stripe_account_id ?? null,
     stripe_onboarding_complete: row.stripe_onboarding_complete ?? false,
+    created_at: row.created_at,
+  };
+}
+
+export function mapCreatorSocialAccount(row: any): CreatorSocialAccount {
+  return {
+    id: row.id,
+    creator_id: row.creator_id,
+    platform: row.platform as SocialPlatform,
+    handle: row.handle ?? '',
+    verified: row.verified ?? false,
+    followers: row.followers ?? null,
+    avg_views: row.avg_views ?? null,
+    avg_likes: row.avg_likes ?? null,
+    avg_comments: row.avg_comments ?? null,
+    engagement_rate: row.engagement_rate != null ? Number(row.engagement_rate) : null,
+    verified_at: row.verified_at ?? null,
+    last_synced_at: row.last_synced_at ?? null,
+    verification_code: row.verification_code ?? null,
+    verification_status: row.verification_status ?? null,
     created_at: row.created_at,
   };
 }
@@ -169,6 +201,7 @@ export function mapListing(row: any): Listing {
     location: row.location ?? '',
     image_url: row.image_url ?? '',
     image_blurhash: row.image_blurhash ?? null,
+    gallery_images: Array.isArray(row.gallery_images) ? row.gallery_images : null,
     status: row.status as ListingStatus,
     applicants_count: row.applicants_count ?? 0,
     created_at: row.created_at,
@@ -925,6 +958,9 @@ export async function searchListings(
     platform?: string;
     category?: string;
     sortBy?: string;
+    payMin?: number | null;
+    payMax?: number | null;
+    location?: string;
   }
 ): Promise<Listing[]> {
   return retryWithBackoff(async () => {
@@ -943,6 +979,15 @@ export async function searchListings(
     }
     if (filters?.category && filters.category !== 'all') {
       q = q.eq('category', filters.category);
+    }
+    if (filters?.payMin != null) {
+      q = q.gte('pay_max', filters.payMin);
+    }
+    if (filters?.payMax != null && filters.payMax > 0) {
+      q = q.lte('pay_min', filters.payMax);
+    }
+    if (filters?.location && filters.location.trim()) {
+      q = q.ilike('location', `%${filters.location.trim()}%`);
     }
 
     switch (filters?.sortBy) {
@@ -1183,7 +1228,7 @@ export async function getCreatorProfile(
   return retryWithBackoff(async () => {
     const { data, error } = await supabase
       .from('creators')
-      .select('*, users(*)')
+      .select('*, users(*), creator_social_accounts(*)')
       .eq('user_id', userId)
       .single();
 
@@ -1201,6 +1246,10 @@ export async function getCreatorProfile(
 
     (data as any).user = (data as any).users;
     const creator = mapCreator(data);
+    const socialRows = (data as any).creator_social_accounts;
+    if (Array.isArray(socialRows)) {
+      creator.social_accounts = socialRows.map(mapCreatorSocialAccount);
+    }
     return redactCreatorRates(creator, userId, requestingUserId);
   }, 'Failed to load creator profile');
 }
@@ -1716,12 +1765,12 @@ export async function sendMessage(
   return mapMessage(data);
 }
 
-// ─── Message reactions (icon-based, stored in message_reactions table) ─────
+// ─── Message reactions (emoji-based, stored in message_reactions table) ──────
 
 export interface MessageReaction {
   message_id: string;
   user_id: string;
-  icon_name: string;
+  emoji: string;
 }
 
 export async function getConversationReactions(
@@ -1736,7 +1785,7 @@ export async function getConversationReactions(
     if (ids.length === 0) return [];
     const { data, error } = await supabase
       .from('message_reactions')
-      .select('message_id, user_id, icon_name')
+      .select('message_id, user_id, emoji')
       .in('message_id', ids);
     if (error) return [];
     return (data ?? []) as MessageReaction[];
@@ -1746,15 +1795,15 @@ export async function getConversationReactions(
 export async function toggleMessageReaction(
   messageId: string,
   userId: string,
-  iconName: string
+  emoji: string
 ): Promise<boolean> {
-  // Check if the user already reacted with this icon.
+  // Check if the user already reacted with this emoji.
   const { data: existing } = await supabase
     .from('message_reactions')
     .select('id')
     .eq('message_id', messageId)
     .eq('user_id', userId)
-    .eq('icon_name', iconName)
+    .eq('emoji', emoji)
     .maybeSingle();
 
   if (existing) {
@@ -1767,7 +1816,7 @@ export async function toggleMessageReaction(
 
   const { error } = await supabase
     .from('message_reactions')
-    .insert({ message_id: messageId, user_id: userId, icon_name: iconName });
+    .insert({ message_id: messageId, user_id: userId, emoji });
   return !error;
 }
 
@@ -2495,6 +2544,73 @@ export async function getCreatorAnalytics(
   }, 'Failed to load creator analytics');
 }
 
+// ─── Creator Weekly Applications ────────────────────────────────────────────
+
+export async function getCreatorWeeklyApplications(
+  creatorId: string,
+): Promise<{ week: string; count: number }[]> {
+  return retryWithBackoff(async () => {
+    const now = new Date();
+    const eightWeeksAgo = new Date(now.getTime() - 8 * 7 * 24 * 60 * 60 * 1000);
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('created_at')
+      .eq('creator_id', creatorId)
+      .gte('created_at', eightWeeksAgo.toISOString())
+      .lte('created_at', now.toISOString());
+
+    if (error || !data || data.length === 0) return mock.mockWeeklyApplications;
+
+    // Build 8 week buckets (oldest first)
+    const buckets: { week: string; count: number }[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const weekStart = new Date(now.getTime() - (i + 1) * 7 * 24 * 60 * 60 * 1000);
+      const weekEnd   = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+      const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const count = data.filter((r) => {
+        const d = new Date(r.created_at).getTime();
+        return d >= weekStart.getTime() && d < weekEnd.getTime();
+      }).length;
+      buckets.push({ week: label, count });
+    }
+
+    const hasData = buckets.some((b) => b.count > 0);
+    return hasData ? buckets : mock.mockWeeklyApplications;
+  }, 'Failed to load weekly applications');
+}
+
+// ─── Creator Top Niches ──────────────────────────────────────────────────────
+
+export async function getCreatorTopNiches(
+  creatorId: string,
+): Promise<{ name: string; count: number }[]> {
+  return retryWithBackoff(async () => {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('listing:listing_id(category)')
+      .eq('creator_id', creatorId);
+
+    if (error || !data || data.length === 0) return mock.mockTopNiches;
+
+    const tally: Record<string, number> = {};
+    for (const row of data) {
+      const cat = (row.listing as unknown as { category?: string } | null)?.category;
+      if (cat) tally[cat] = (tally[cat] ?? 0) + 1;
+    }
+
+    const result = Object.entries(tally)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        count,
+      }));
+
+    return result.length > 0 ? result : mock.mockTopNiches;
+  }, 'Failed to load top niches');
+}
+
 // ─── Listing Analytics ──────────────────────────────────────────────────────
 
 export async function fetchListingAnalytics(
@@ -2749,6 +2865,131 @@ export async function getFollowedCreatorIds(userId: string): Promise<string[]> {
   return data.map((r: any) => r.creator_id);
 }
 
+// ─── Creator Social Accounts ───────────────────────────────────────────────
+
+export async function getCreatorSocials(
+  creatorId: string,
+): Promise<CreatorSocialAccount[]> {
+  const { data, error } = await supabase
+    .from('creator_social_accounts')
+    .select('*')
+    .eq('creator_id', creatorId)
+    .order('created_at', { ascending: true });
+
+  if (error || !data) {
+    logError('getCreatorSocials', error);
+    return [];
+  }
+
+  return data.map(mapCreatorSocialAccount);
+}
+
+export async function upsertCreatorSocial(
+  account: Pick<CreatorSocialAccount, 'creator_id' | 'platform' | 'handle'> &
+    Partial<Omit<CreatorSocialAccount, 'id' | 'creator_id' | 'platform' | 'handle' | 'created_at'>>,
+): Promise<CreatorSocialAccount | null> {
+  const { data, error } = await supabase
+    .from('creator_social_accounts')
+    .upsert(
+      {
+        creator_id: account.creator_id,
+        platform: account.platform,
+        handle: account.handle,
+        followers: account.followers ?? null,
+        avg_views: account.avg_views ?? null,
+        avg_likes: account.avg_likes ?? null,
+        avg_comments: account.avg_comments ?? null,
+        engagement_rate: account.engagement_rate ?? null,
+        verified: account.verified ?? false,
+        verified_at: account.verified_at ?? null,
+        last_synced_at: account.last_synced_at ?? null,
+        verification_code: account.verification_code ?? null,
+        verification_status: account.verification_status ?? null,
+      },
+      { onConflict: 'creator_id,platform,handle' },
+    )
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    logError('upsertCreatorSocial', error);
+    return null;
+  }
+
+  return mapCreatorSocialAccount(data);
+}
+
+export async function deleteCreatorSocial(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('creator_social_accounts')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    logError('deleteCreatorSocial', error);
+    return false;
+  }
+
+  return true;
+}
+
+// ─── Social Verification — Screenshot Path ──────────────────────────────────
+
+export interface ScreenshotVerifyPayload {
+  platform: SocialPlatform;
+  handle: string;
+  screenshot_url: string;
+  claimed_followers: number | null;
+  claimed_avg_views: number | null;
+  claimed_avg_likes: number | null;
+}
+
+/**
+ * Upload a screenshot to Supabase storage and invoke the
+ * `social-verify-screenshot` edge function to queue a manual review.
+ * Also marks the social account row as `pending_screenshot`.
+ */
+export async function submitSocialVerificationScreenshot(
+  userId: string,
+  creatorId: string,
+  payload: Omit<ScreenshotVerifyPayload, 'screenshot_url'> & { imageUri: string },
+): Promise<void> {
+  // 1. Upload image to storage (reuse portfolio bucket; screenshots/<userId>/).
+  const ext = payload.imageUri.split('.').pop()?.split('?')[0] ?? 'jpg';
+  const filename = `${Date.now()}_social_verify.${ext}`;
+  const storagePath = `${userId}/${filename}`;
+
+  const response = await fetch(payload.imageUri);
+  const blob = await response.blob();
+  const { error: uploadError } = await supabase.storage
+    .from('portfolio')
+    .upload(storagePath, blob, { contentType: `image/${ext}`, upsert: false });
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data: urlData } = supabase.storage.from('portfolio').getPublicUrl(storagePath);
+  const screenshotUrl = urlData.publicUrl;
+
+  // 2. Call edge function.
+  const body: ScreenshotVerifyPayload = {
+    platform: payload.platform,
+    handle: payload.handle,
+    screenshot_url: screenshotUrl,
+    claimed_followers: payload.claimed_followers,
+    claimed_avg_views: payload.claimed_avg_views,
+    claimed_avg_likes: payload.claimed_avg_likes,
+  };
+  const { error: fnError } = await supabase.functions.invoke('social-verify-screenshot', { body });
+  if (fnError) throw new Error(fnError.message);
+
+  // 3. Mark DB row pending so the profile can reflect it immediately.
+  await supabase
+    .from('creator_social_accounts')
+    .update({ verification_status: 'pending_screenshot' })
+    .eq('creator_id', creatorId)
+    .eq('platform', payload.platform)
+    .eq('handle', payload.handle.replace(/^@/, ''));
+}
+
 // ─── Profile View Tracking ─────────────────────────────────────────────────
 
 export async function trackProfileView(
@@ -2763,4 +3004,166 @@ export async function trackProfileView(
   } catch (err) {
     devWarn('trackProfileView failed', err);
   }
+}
+
+// ─── Boosts ────────────────────────────────────────────────────────────────
+
+function mapBoost(row: any): Boost {
+  return {
+    id: row.id,
+    listing_id: row.listing_id,
+    business_id: row.business_id,
+    tier: row.tier,
+    status: row.status as BoostStatus,
+    amount_cents: row.amount_cents ?? 0,
+    currency: row.currency ?? 'gbp',
+    stripe_payment_intent_id: row.stripe_payment_intent_id ?? null,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    listing: row.listings ? mapListing(row.listings) : undefined,
+  };
+}
+
+/**
+ * Create a boost for a listing. Calls `create-payment-intent` edge function
+ * with `boost_id` in metadata so the webhook can activate the boost on payment.
+ */
+export async function createBoost(
+  listingId: string,
+  businessId: string,
+  tier: BoostTierKey,
+): Promise<{ boost: Boost; clientSecret: string } | null> {
+  const tierConfig = BOOST_TIERS[tier];
+  if (!tierConfig) {
+    logError('createBoost', `Invalid tier: ${tier}`);
+    return null;
+  }
+
+  const now = new Date();
+  const endsAt = new Date(now);
+  endsAt.setDate(endsAt.getDate() + tierConfig.durationDays);
+
+  // Insert the boost row with pending status
+  const { data: boostRow, error: insertError } = await supabase
+    .from('boosts')
+    .insert({
+      listing_id: listingId,
+      business_id: businessId,
+      tier,
+      status: 'pending' as BoostStatus,
+      amount_cents: tierConfig.priceGBP,
+      currency: 'gbp',
+      starts_at: now.toISOString(),
+      ends_at: endsAt.toISOString(),
+    })
+    .select('*')
+    .single();
+
+  if (insertError || !boostRow) {
+    logError('createBoost insert', insertError);
+    toast.error('Failed to create boost. Please try again.');
+    return null;
+  }
+
+  const boost = mapBoost(boostRow);
+
+  // Call create-payment-intent with boost metadata
+  const { data, error: fnError } = await supabase.functions.invoke(
+    'create-payment-intent',
+    {
+      body: {
+        amount_cents: tierConfig.priceGBP,
+        boost_id: boost.id,
+        metadata: {
+          boost_id: boost.id,
+          boost_tier: tier,
+          listing_id: listingId,
+        },
+      },
+    },
+  );
+
+  if (fnError || !data?.client_secret) {
+    logError('createBoost payment intent', fnError);
+    toast.error('Failed to start payment. Please try again.');
+    // Clean up orphan boost
+    await supabase.from('boosts').delete().eq('id', boost.id);
+    return null;
+  }
+
+  // Store the payment intent ID on the boost
+  await supabase
+    .from('boosts')
+    .update({ stripe_payment_intent_id: data.payment_intent_id })
+    .eq('id', boost.id);
+
+  boost.stripe_payment_intent_id = data.payment_intent_id;
+
+  return { boost, clientSecret: data.client_secret };
+}
+
+/**
+ * Get all currently active boosts (status = 'active' and ends_at > now).
+ * Optionally filter by business.
+ */
+export async function getActiveBoosts(
+  businessId?: string,
+): Promise<Boost[]> {
+  let query = supabase
+    .from('boosts')
+    .select('*, listings!inner(*, business_profiles(*, users(*)))')
+    .eq('status', 'active')
+    .gt('ends_at', new Date().toISOString())
+    .order('ends_at', { ascending: true });
+
+  if (businessId) {
+    query = query.eq('business_id', businessId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    logError('getActiveBoosts', error);
+    return [];
+  }
+
+  return (data ?? []).map(mapBoost);
+}
+
+/**
+ * List listing IDs that currently have an active boost, ordered by tier rank
+ * (top > premium > standard) then by boost creation time.
+ * Useful for the feed to surface boosted listings first.
+ */
+export async function listListingsWithBoost(): Promise<string[]> {
+  const tierOrder: Record<string, number> = { top: 0, premium: 1, standard: 2 };
+
+  const { data, error } = await supabase
+    .from('boosts')
+    .select('listing_id, tier')
+    .eq('status', 'active')
+    .gt('ends_at', new Date().toISOString());
+
+  if (error) {
+    logError('listListingsWithBoost', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) return [];
+
+  // Deduplicate — keep highest tier per listing
+  const bestTier = new Map<string, string>();
+  for (const row of data) {
+    const existing = bestTier.get(row.listing_id);
+    if (!existing || (tierOrder[row.tier] ?? 9) < (tierOrder[existing] ?? 9)) {
+      bestTier.set(row.listing_id, row.tier);
+    }
+  }
+
+  // Sort by tier rank
+  return [...bestTier.entries()]
+    .sort((a, b) => (tierOrder[a[1]] ?? 9) - (tierOrder[b[1]] ?? 9))
+    .map(([listingId]) => listingId);
 }

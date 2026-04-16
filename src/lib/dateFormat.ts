@@ -1,6 +1,5 @@
 import { getLocales } from 'expo-localization';
 import {
-  format,
   formatDistanceToNowStrict,
   isToday,
   isYesterday,
@@ -17,15 +16,18 @@ function getDeviceLocale(): string {
  * Smart calendar label for lists/headers:
  *  - Today         -> "Today"
  *  - Yesterday     -> "Yesterday"
- *  - Within year   -> "Mar 12"
- *  - Older         -> "Mar 12, 2024"
+ *  - Within year   -> "Mar 12"  (locale-aware)
+ *  - Older         -> "Mar 12, 2024"  (locale-aware)
  */
 export function formatSmartDate(dateStr: string | Date): string {
   const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
   if (isToday(d)) return 'Today';
   if (isYesterday(d)) return 'Yesterday';
-  if (isThisYear(d)) return format(d, 'MMM d');
-  return format(d, 'MMM d, yyyy');
+  const locale = getDeviceLocale();
+  if (isThisYear(d)) {
+    return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  }
+  return d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**

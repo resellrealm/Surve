@@ -1,0 +1,8 @@
+appId: com.surve.creator
+---
+- launchApp:
+    clearState: false
+- openLink: "surve://(tabs)"
+- waitForAnimationToEnd
+- assertVisible: "Home"
+- takeScreenshot: "../docs/screenshots/5.5-inch/01-home"

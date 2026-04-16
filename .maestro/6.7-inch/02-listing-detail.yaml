@@ -1,0 +1,8 @@
+appId: com.surve.creator
+---
+- launchApp:
+    clearState: false
+- openLink: "surve://(listing)/seed-listing-1"
+- waitForAnimationToEnd
+- assertVisible: "Apply"
+- takeScreenshot: "../docs/screenshots/6.7-inch/02-listing-detail"
