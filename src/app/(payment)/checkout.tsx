@@ -1,17 +1,17 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
-  Pressable,
-  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useIsOffline } from '../../hooks/useIsOffline';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { AdaptiveImage } from '../../components/ui/AdaptiveImage';
+import { useStripe } from '@stripe/stripe-react-native';
 import {
-  ChevronLeft,
   Lock,
   Check,
   CreditCard,
@@ -21,16 +21,20 @@ import {
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
+import { toast } from '../../lib/toast';
+import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { ModalHeader } from '../../components/ui/ModalHeader';
 import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
-import {
-  mockPaymentMethods,
-  type PaymentMethod,
-} from '../../lib/mockData';
+import { PLATFORM_FEE_RATE } from '../../constants/pricing';
+import { formatCurrency } from '../../lib/currency';
+import { getPaymentMethods, preferMock } from '../../lib/api';
+import { mockPaymentMethods } from '../../lib/mockData';
+import type { PaymentMethod } from '../../types';
 
-const PLATFORM_FEE_RATE = 0.05;
-
-function formatBrand(brand: PaymentMethod['brand']) {
+function formatBrand(brand: string) {
   if (brand === 'apple_pay') return 'Apple Pay';
   return brand.charAt(0).toUpperCase() + brand.slice(1);
 }
@@ -40,8 +44,9 @@ export default function CheckoutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
+  const isOffline = useIsOffline();
   const params = useLocalSearchParams<{ bookingId?: string; listingId?: string; amount?: string }>();
-  const { listings, bookings } = useStore();
+  const { listings, bookings, user } = useStore();
 
   const booking = useMemo(
     () => bookings.find((b) => b.id === params.bookingId) ?? bookings[0],
@@ -62,35 +67,97 @@ export default function CheckoutScreen() {
   const platformFee = Math.round(baseAmount * PLATFORM_FEE_RATE);
   const total = baseAmount + platformFee;
 
-  const [selectedId, setSelectedId] = useState<string>(
-    mockPaymentMethods.find((p) => p.is_default)?.id ?? mockPaymentMethods[0].id
-  );
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [methodsLoading, setMethodsLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [processing, setProcessing] = useState(false);
 
-  const handlePay = useCallback(() => {
-    haptics.medium();
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setMethodsLoading(true);
+      const userId = user?.id;
+      const fetched = userId ? await getPaymentMethods(userId) : [];
+      const resolved = preferMock(fetched, mockPaymentMethods as unknown as PaymentMethod[]);
+      if (cancelled) return;
+      setMethods(resolved);
+      const defaultMethod = resolved.find((p) => p.is_default) ?? resolved[0];
+      if (defaultMethod) setSelectedId(defaultMethod.id);
+      setMethodsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const handlePay = useCallback(async () => {
+    haptics.confirm();
     setProcessing(true);
-    // TODO: swap for real Stripe PaymentSheet.confirm() when keys are wired
-    setTimeout(() => {
-      setProcessing(false);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Not signed in: Please sign in to complete payment.');
+        setProcessing(false);
+        return;
+      }
+
+      const bookingId = booking?.id ?? params.bookingId;
+      if (!bookingId) {
+        toast.error('No booking associated with this payment.');
+        setProcessing(false);
+        return;
+      }
+
+      const { data, error: fnError } = await supabase.functions.invoke(
+        'create-payment-intent',
+        { body: { booking_id: bookingId, amount_cents: total * 100 } },
+      );
+
+      if (fnError || !data?.client_secret) {
+        toast.error(`Payment error: ${data?.error ?? 'Could not create payment intent.'}`);
+        setProcessing(false);
+        return;
+      }
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: data.client_secret,
+        merchantDisplayName: 'Surve',
+        allowsDelayedPaymentMethods: false,
+      });
+
+      if (initError) {
+        toast.error(`Payment error: ${initError.message}`);
+        setProcessing(false);
+        return;
+      }
+
+      const { error: presentError } = await presentPaymentSheet();
+
+      if (presentError) {
+        if (presentError.code !== 'Canceled') {
+          toast.error(`Payment failed: ${presentError.message}`);
+        }
+        setProcessing(false);
+        return;
+      }
+
       haptics.success();
-      router.replace({ pathname: '/(payment)/success', params: { amount: String(total), title: listing?.title ?? 'Booking' } });
-    }, 1400);
-  }, [haptics, router, total, listing]);
+      router.replace({
+        pathname: '/(payment)/success',
+        params: { amount: String(total), title: listing?.title ?? 'Booking' },
+      });
+    } catch (err: any) {
+      toast.error(`Payment error: ${err?.message ?? 'Something went wrong.'}`);
+    } finally {
+      setProcessing(false);
+    }
+  }, [haptics, router, total, listing, booking, params.bookingId, initPaymentSheet, presentPaymentSheet]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
-        <Pressable
-          onPress={() => { haptics.light(); router.back(); }}
-          style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary }]}
-          hitSlop={8}
-        >
-          <ChevronLeft size={20} color={colors.text} strokeWidth={2.2} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Checkout</Text>
-        <View style={styles.iconBtn} />
-      </View>
+      <ModalHeader />
+      <ScreenHeader title="Checkout" />
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 140 }}
@@ -101,7 +168,7 @@ export default function CheckoutScreen() {
           style={[styles.summary, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}
         >
           {listing?.image_url ? (
-            <Image source={{ uri: listing.image_url }} style={styles.summaryImage} />
+            <AdaptiveImage source={{ uri: listing.image_url }} contentFit="cover" overlayOpacity={0.18} blurhash={listing.image_blurhash} style={styles.summaryImage} accessibilityLabel={`${listing.title} image`} />
           ) : (
             <View style={[styles.summaryImage, { backgroundColor: colors.surfaceSecondary }]} />
           )}
@@ -122,16 +189,16 @@ export default function CheckoutScreen() {
           entering={FadeInDown.duration(400).delay(100)}
           style={styles.section}
         >
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Price breakdown</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">Price breakdown</Text>
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
-            <Row label={`Creator fee`} value={`$${baseAmount.toLocaleString()}`} colors={colors} />
+            <Row label={`Creator fee`} value={formatCurrency(baseAmount)} colors={colors} />
             <Row
               label={`Platform fee (${Math.round(PLATFORM_FEE_RATE * 100)}%)`}
-              value={`$${platformFee.toLocaleString()}`}
+              value={formatCurrency(platformFee)}
               colors={colors}
             />
             <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
-            <Row label="Total due today" value={`$${total.toLocaleString()}`} bold colors={colors} />
+            <Row label="Total due today" value={formatCurrency(total)} bold colors={colors} />
           </View>
         </Animated.View>
 
@@ -139,14 +206,30 @@ export default function CheckoutScreen() {
           entering={FadeInDown.duration(400).delay(150)}
           style={styles.section}
         >
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Pay with</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">Pay with</Text>
           <View style={{ gap: Spacing.sm }}>
-            {mockPaymentMethods.map((pm) => {
+            {methodsLoading ? (
+              [0, 1].map((i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.method,
+                    {
+                      backgroundColor: colors.surfaceSecondary,
+                      borderColor: colors.borderLight,
+                      borderWidth: 1,
+                      height: 68,
+                    },
+                  ]}
+                />
+              ))
+            ) : methods.map((pm) => {
               const selected = pm.id === selectedId;
               return (
-                <Pressable
+                <PressableScale
                   key={pm.id}
-                  onPress={() => { haptics.selection(); setSelectedId(pm.id); }}
+                  onPress={() => { haptics.select(); setSelectedId(pm.id); }}
+                  scaleValue={0.97}
                   style={[
                     styles.method,
                     {
@@ -155,6 +238,9 @@ export default function CheckoutScreen() {
                       borderWidth: selected ? 2 : 1,
                     },
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${formatBrand(pm.brand)} ${pm.last4 ? `ending in ${pm.last4}` : ''}`}
+                  accessibilityState={{ selected }}
                 >
                   <View style={[styles.methodIcon, { backgroundColor: colors.surfaceSecondary }]}>
                     <CreditCard size={18} color={colors.text} strokeWidth={2} />
@@ -180,19 +266,28 @@ export default function CheckoutScreen() {
                   ) : (
                     <View style={[styles.checkDot, { borderColor: colors.border, borderWidth: 1, backgroundColor: 'transparent' }]} />
                   )}
-                </Pressable>
+                </PressableScale>
               );
             })}
 
-            <Pressable
-              onPress={() => { haptics.light(); router.push('/(payment)/methods'); }}
+            {!methodsLoading && methods.length === 0 && (
+              <Text style={[styles.methodMeta, { color: colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.md }]}>
+                No saved payment methods
+              </Text>
+            )}
+
+            <PressableScale
+              onPress={() => { haptics.tap(); router.push('/(payment)/methods'); }}
+              scaleValue={0.97}
               style={[styles.addMethod, { borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Add new payment method"
             >
               <Plus size={18} color={colors.primary} strokeWidth={2.2} />
               <Text style={[styles.addMethodText, { color: colors.primary }]}>
                 Add new payment method
               </Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </Animated.View>
 
@@ -213,15 +308,17 @@ export default function CheckoutScreen() {
       <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.borderLight, paddingBottom: insets.bottom + Spacing.md }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Total</Text>
-          <Text style={[styles.footerAmount, { color: colors.text }]}>${total.toLocaleString()}</Text>
+          <Text style={[styles.footerAmount, { color: colors.text }]}>{formatCurrency(total)}</Text>
         </View>
         <Button
-          title={processing ? 'Processing…' : 'Pay now'}
+          title={isOffline ? 'Offline' : processing ? 'Processing…' : 'Pay now'}
           onPress={handlePay}
           loading={processing}
+          disabled={isOffline}
           size="lg"
           icon={<Lock size={18} color={colors.onPrimary} strokeWidth={2.2} />}
           style={{ minWidth: 180 }}
+          accessibilityHint="Processes your payment and confirms the booking"
         />
       </View>
     </View>
@@ -253,22 +350,6 @@ function Row({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { ...Typography.headline, fontWeight: '700' },
 
   summary: {
     margin: Spacing.lg,

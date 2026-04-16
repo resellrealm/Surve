@@ -1,118 +1,214 @@
-import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { StyleSheet, View, Text, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ChevronLeft, CreditCard, Lock, Apple } from 'lucide-react-native';
+import { useIsOffline } from '../../hooks/useIsOffline';
+import Animated, {
+  FadeInDown,
+  FadeIn,
+  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import { CardField, useConfirmSetupIntent, type CardFieldInput } from '@stripe/stripe-react-native';
+import { CreditCard, Lock, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
-import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { ModalHeader } from '../../components/ui/ModalHeader';
+import { useStore } from '../../lib/store';
+import { toast } from '../../lib/toast';
+import { createSetupIntent, addPaymentMethod } from '../../lib/api';
 import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
+
+const SUPPORTED_BRANDS = new Set(['visa', 'mastercard', 'amex', 'americanexpress', 'discover']);
+
+function isCardBrandSupported(brand: string | undefined): boolean {
+  if (!brand) return true;
+  return SUPPORTED_BRANDS.has(brand.toLowerCase().replace(/\s+/g, ''));
+}
 
 export default function AddPaymentMethodScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const haptics = useHaptics();
+  const isOffline = useIsOffline();
+  const { confirmSetupIntent } = useConfirmSetupIntent();
+  const user = useStore((s) => s.user);
 
-  const [number, setNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvc, setCvc] = useState('');
-  const [name, setName] = useState('');
+  const [cardDetails, setCardDetails] = useState<CardFieldInput.Details | null>(null);
   const [saving, setSaving] = useState(false);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [brandError, setBrandError] = useState<string | null>(null);
+  const [cardIncomplete, setCardIncomplete] = useState<string | null>(null);
 
-  const save = useCallback(() => {
-    haptics.medium();
+  const shakeX = useSharedValue(0);
+
+  const triggerShake = useCallback(() => {
+    shakeX.value = withSequence(
+      withTiming(-8, { duration: 50 }),
+      withTiming(8, { duration: 50 }),
+      withTiming(-6, { duration: 50 }),
+      withTiming(6, { duration: 50 }),
+      withTiming(-3, { duration: 40 }),
+      withTiming(0, { duration: 40 }),
+    );
+  }, [shakeX]);
+
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
+  }));
+
+  useEffect(() => {
+    (async () => {
+      const result = await createSetupIntent();
+      if (result) {
+        setClientSecret(result.client_secret);
+      } else {
+        toast.error('Unable to initialise card setup. Please try again.');
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleCardChange = useCallback((details: CardFieldInput.Details) => {
+    setCardDetails(details);
+    setCardIncomplete(null);
+    if (details.brand && !isCardBrandSupported(details.brand)) {
+      setBrandError(`${details.brand} cards are not supported. Please use Visa, Mastercard, Amex, or Discover.`);
+      haptics.warning();
+    } else {
+      setBrandError(null);
+    }
+  }, [haptics]);
+
+  const cardComplete = cardDetails?.complete === true;
+  const canSave = cardComplete && !brandError && !!clientSecret;
+
+  const save = useCallback(async () => {
+    if (!cardDetails || !cardDetails.complete) {
+      setCardIncomplete('Please fill in all card details');
+      triggerShake();
+      haptics.error();
+      return;
+    }
+
+    if (!clientSecret || !user) return;
+
+    if (!isCardBrandSupported(cardDetails?.brand)) {
+      haptics.error();
+      triggerShake();
+      setBrandError(`${cardDetails?.brand ?? 'This'} card type is not supported.`);
+      return;
+    }
+
+    haptics.confirm();
     setSaving(true);
-    // TODO: wire to Stripe SetupIntent + stripe.confirmCardSetup()
-    setTimeout(() => {
-      setSaving(false);
+
+    try {
+      const { setupIntent, error } = await confirmSetupIntent(clientSecret, {
+        paymentMethodType: 'Card',
+      });
+
+      if (error) {
+        haptics.error();
+        toast.error(`Card Setup Failed: ${error.message}`);
+        setSaving(false);
+        return;
+      }
+
+      if (setupIntent?.paymentMethodId) {
+        const brand = cardDetails?.brand ?? 'unknown';
+        const last4 = cardDetails?.last4 ?? '****';
+        const expMonth = cardDetails?.expiryMonth ?? 0;
+        const expYear = cardDetails?.expiryYear ?? 0;
+
+        await addPaymentMethod({
+          user_id: user.id,
+          stripe_payment_method_id: setupIntent.paymentMethodId,
+          brand,
+          last4,
+          exp_month: expMonth,
+          exp_year: expYear,
+          make_default: true,
+        });
+      }
+
       haptics.success();
       router.back();
-    }, 1000);
-  }, [haptics, router]);
+    } catch {
+      haptics.error();
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }, [clientSecret, cardDetails, user, haptics, confirmSetupIntent, router, triggerShake]);
+
+  const hasError = !!brandError || !!cardIncomplete;
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
-        <Pressable
-          onPress={() => { haptics.light(); router.back(); }}
-          style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary }]}
-          hitSlop={8}
-        >
-          <ChevronLeft size={20} color={colors.text} strokeWidth={2.2} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Add card</Text>
-        <View style={styles.iconBtn} />
-      </View>
+      <ModalHeader />
+      <ScreenHeader title="Add Card" />
 
       <View style={{ flex: 1, padding: Spacing.lg, gap: Spacing.lg }}>
         <Animated.View entering={FadeInDown.duration(400)} style={[styles.cardPreview, { backgroundColor: colors.primary }]}>
           <CreditCard size={28} color={colors.onPrimary} strokeWidth={2} />
           <Text style={[styles.previewNumber, { color: colors.onPrimary }]} numberOfLines={1}>
-            {number.padEnd(19, '•').replace(/(.{4})/g, '$1 ').trim() || '•••• •••• •••• ••••'}
+            {cardDetails?.last4 ? `•••• •••• •••• ${cardDetails.last4}` : '•••• •••• •••• ••••'}
           </Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View>
-              <Text style={[styles.previewLabel, { color: 'rgba(255,255,255,0.7)' }]}>CARDHOLDER</Text>
+              <Text style={[styles.previewLabel, { color: 'rgba(255,255,255,0.7)' }]}>BRAND</Text>
               <Text style={[styles.previewValue, { color: colors.onPrimary }]} numberOfLines={1}>
-                {name.toUpperCase() || 'YOUR NAME'}
+                {cardDetails?.brand?.toUpperCase() || 'CARD'}
               </Text>
             </View>
             <View>
               <Text style={[styles.previewLabel, { color: 'rgba(255,255,255,0.7)' }]}>EXPIRES</Text>
               <Text style={[styles.previewValue, { color: colors.onPrimary }]}>
-                {expiry || 'MM/YY'}
+                {cardDetails?.expiryMonth && cardDetails?.expiryYear
+                  ? `${String(cardDetails.expiryMonth).padStart(2, '0')}/${String(cardDetails.expiryYear).slice(-2)}`
+                  : 'MM/YY'}
               </Text>
             </View>
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={{ gap: Spacing.xs }}>
-          <Input
-            label="Card number"
-            value={number}
-            onChangeText={(v) => setNumber(v.replace(/\D/g, '').slice(0, 16))}
-            placeholder="1234 5678 9012 3456"
-            keyboardType="number-pad"
-            icon={<CreditCard size={20} color={colors.textTertiary} strokeWidth={2} />}
-          />
-          <View style={{ flexDirection: 'row', gap: Spacing.md }}>
-            <View style={{ flex: 1 }}>
-              <Input
-                label="Expiry"
-                value={expiry}
-                onChangeText={(v) => {
-                  const cleaned = v.replace(/\D/g, '').slice(0, 4);
-                  setExpiry(cleaned.length > 2 ? `${cleaned.slice(0, 2)}/${cleaned.slice(2)}` : cleaned);
-                }}
-                placeholder="MM/YY"
-                keyboardType="number-pad"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Input
-                label="CVC"
-                value={cvc}
-                onChangeText={(v) => setCvc(v.replace(/\D/g, '').slice(0, 4))}
-                placeholder="123"
-                keyboardType="number-pad"
-                secureTextEntry
-              />
-            </View>
-          </View>
-          <Input
-            label="Name on card"
-            value={name}
-            onChangeText={setName}
-            placeholder="Jane Doe"
-            autoCapitalize="words"
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={shakeStyle}>
+          <CardField
+            postalCodeEnabled={false}
+            placeholders={{ number: '4242 4242 4242 4242' }}
+            cardStyle={{
+              backgroundColor: colors.surface,
+              textColor: colors.text,
+              placeholderColor: colors.textTertiary,
+              borderColor: hasError ? colors.error : colors.border,
+              borderWidth: hasError ? 2 : 1,
+              borderRadius: BorderRadius.md,
+              fontSize: 16,
+            }}
+            style={styles.cardField}
+            onCardChange={handleCardChange}
           />
         </Animated.View>
+
+        {(brandError || cardIncomplete) && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+            style={[styles.errorRow, { backgroundColor: colors.errorLight }]}
+          >
+            <AlertCircle size={14} color={colors.error} strokeWidth={2.2} />
+            <Text style={[styles.errorText, { color: colors.error }]}>{brandError || cardIncomplete}</Text>
+          </Animated.View>
+        )}
 
         <View style={{ flex: 1 }} />
 
@@ -123,7 +219,14 @@ export default function AddPaymentMethodScreen() {
           </Text>
         </View>
 
-        <Button title="Save card" onPress={save} loading={saving} size="lg" fullWidth />
+        <Button
+          title={isOffline ? 'Offline' : 'Save card'}
+          onPress={save}
+          loading={saving || loading}
+          disabled={isOffline || (!canSave && !(!cardDetails?.complete && !saving))}
+          size="lg"
+          fullWidth
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -131,16 +234,6 @@ export default function AddPaymentMethodScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  title: { ...Typography.headline, fontWeight: '700' },
 
   cardPreview: {
     height: 200,
@@ -153,6 +246,11 @@ const styles = StyleSheet.create({
   previewLabel: { ...Typography.caption2, fontWeight: '700', letterSpacing: 0.8 },
   previewValue: { ...Typography.subheadline, fontWeight: '700', marginTop: 2 },
 
+  cardField: {
+    width: '100%',
+    height: 50,
+  },
+
   secureRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -161,4 +259,13 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
   },
   secureText: { ...Typography.footnote, flex: 1 },
+
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  errorText: { ...Typography.footnote, flex: 1, fontWeight: '500' },
 });

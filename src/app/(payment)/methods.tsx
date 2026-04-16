@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ChevronLeft, CreditCard, Plus, Star, Trash2 } from 'lucide-react-native';
+import { CreditCard, Plus, Star, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { ModalHeader } from '../../components/ui/ModalHeader';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
-import { mockPaymentMethods, type PaymentMethod } from '../../lib/mockData';
+import { getPaymentMethods, deletePaymentMethod, setDefaultPaymentMethod } from '../../lib/api';
+import { useStore } from '../../lib/store';
+import type { PaymentMethod } from '../../types';
 
 function formatBrand(brand: PaymentMethod['brand']) {
   if (brand === 'apple_pay') return 'Apple Pay';
@@ -19,33 +25,57 @@ export default function PaymentMethodsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
-  const [methods, setMethods] = useState(mockPaymentMethods);
+  const user = useStore((s) => s.user);
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const makeDefault = (id: string) => {
-    haptics.selection();
+  const loadMethods = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    const data = await getPaymentMethods(user.id);
+    setMethods(data);
+    setLoading(false);
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMethods();
+    }, [loadMethods]),
+  );
+
+  const makeDefault = async (id: string) => {
+    haptics.select();
     setMethods((prev) => prev.map((m) => ({ ...m, is_default: m.id === id })));
+    const ok = await setDefaultPaymentMethod(id);
+    if (!ok) loadMethods();
   };
 
-  const remove = (id: string) => {
+  const remove = async (id: string) => {
     haptics.warning();
     setMethods((prev) => prev.filter((m) => m.id !== id));
+    const ok = await deletePaymentMethod(id);
+    if (!ok) loadMethods();
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
-        <Pressable
-          onPress={() => { haptics.light(); router.back(); }}
-          style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary }]}
-          hitSlop={8}
-        >
-          <ChevronLeft size={20} color={colors.text} strokeWidth={2.2} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Payment methods</Text>
-        <View style={styles.iconBtn} />
-      </View>
+      <ModalHeader />
+      <ScreenHeader title="Payment Methods" />
 
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: insets.bottom + 80, gap: Spacing.md }}>
+        {loading && methods.length === 0 && (
+          <>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+                <Skeleton width={44} height={44} borderRadius={12} />
+                <View style={{ flex: 1, gap: Spacing.xs }}>
+                  <Skeleton width={140} height={16} />
+                  <Skeleton width={100} height={12} />
+                </View>
+              </View>
+            ))}
+          </>
+        )}
         {methods.map((pm, i) => (
           <Animated.View
             key={pm.id}
@@ -74,21 +104,23 @@ export default function PaymentMethodsScreen() {
               </Text>
               <View style={{ flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.sm }}>
                 {!pm.is_default && (
-                  <Pressable onPress={() => makeDefault(pm.id)}>
+                  <PressableScale onPress={() => makeDefault(pm.id)} scaleValue={0.92} accessibilityRole="button" accessibilityLabel={`Set ${formatBrand(pm.brand)} ending in ${pm.last4} as default`} accessibilityHint="Makes this your primary payment method">
                     <Text style={[styles.actionText, { color: colors.primary }]}>Set as default</Text>
-                  </Pressable>
+                  </PressableScale>
                 )}
-                <Pressable onPress={() => remove(pm.id)}>
+                <PressableScale onPress={() => remove(pm.id)} scaleValue={0.92} accessibilityRole="button" accessibilityLabel={`Remove ${formatBrand(pm.brand)} ending in ${pm.last4}`} accessibilityHint="Removes this payment method from your account">
                   <Text style={[styles.actionText, { color: colors.error }]}>Remove</Text>
-                </Pressable>
+                </PressableScale>
               </View>
             </View>
           </Animated.View>
         ))}
 
-        <Pressable
-          onPress={() => { haptics.medium(); router.push('/(payment)/add-method'); }}
+        <PressableScale
+          onPress={() => { haptics.confirm(); router.push('/(payment)/add-method'); }}
           style={[styles.addBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+          accessibilityRole="button"
+          accessibilityLabel="Add payment method"
         >
           <View style={[styles.cardIcon, { backgroundColor: colors.activeLight }]}>
             <Plus size={22} color={colors.primary} strokeWidth={2.5} />
@@ -97,7 +129,7 @@ export default function PaymentMethodsScreen() {
             <Text style={[styles.cardTitle, { color: colors.text }]}>Add payment method</Text>
             <Text style={[styles.cardMeta, { color: colors.textTertiary }]}>Card, Apple Pay or bank</Text>
           </View>
-        </Pressable>
+        </PressableScale>
       </ScrollView>
     </View>
   );
@@ -105,16 +137,6 @@ export default function PaymentMethodsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  title: { ...Typography.headline, fontWeight: '700' },
 
   card: {
     flexDirection: 'row',
