@@ -1,30 +1,45 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  Pressable,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
+  type TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Mail, Lock, User, ArrowRight, Check } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../../hooks/useHaptics';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { PressableScale } from '../../components/ui/PressableScale';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { Typography, Spacing } from '../../constants/theme';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type FormErrors = {
+  fullName?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  terms?: string;
+};
+
 export default function SignupScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -33,31 +48,58 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [shakeTrigger, setShakeTrigger] = useState(0);
+
+  const clearFieldError = useCallback((field: keyof FormErrors) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
   const handleSignup = useCallback(() => {
-    if (!fullName.trim() || !email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please fill in all fields.');
-      return;
+    const newErrors: FormErrors = {};
+
+    if (!fullName.trim()) {
+      newErrors.fullName = 'Full name is required';
     }
 
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match.');
-      return;
+    if (!email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!EMAIL_RE.test(email.trim())) {
+      newErrors.email = 'Enter a valid email address';
     }
 
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters.');
-      return;
+    if (!password.trim()) {
+      newErrors.password = 'Password is required';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
+    }
+
+    if (!confirmPassword.trim()) {
+      newErrors.confirmPassword = 'Please confirm your password';
+    } else if (password !== confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
     }
 
     if (!termsAccepted) {
-      Alert.alert('Error', 'You must accept the Terms of Service and confirm you are 18+.');
+      newErrors.terms = 'You must accept the Terms of Service and confirm you are 18+';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      setShakeTrigger((n) => n + 1);
+      haptics.error();
       return;
     }
 
+    setErrors({});
     setLoading(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
 
-    // Navigate to onboarding where role will be selected and account created
     setLoading(false);
     router.push({
       pathname: '/auth/onboarding',
@@ -67,12 +109,12 @@ export default function SignupScreen() {
         password,
       },
     });
-  }, [router, fullName, email, password, confirmPassword, termsAccepted]);
+  }, [router, fullName, email, password, confirmPassword, termsAccepted, haptics]);
 
   const handleBack = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     router.back();
-  }, [router]);
+  }, [router, haptics]);
 
   return (
     <KeyboardAvoidingView
@@ -88,7 +130,7 @@ export default function SignupScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-          <Text style={[styles.title, { color: colors.text }]}>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
             Create Account
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
@@ -103,46 +145,72 @@ export default function SignupScreen() {
           <Input
             label="Full Name"
             value={fullName}
-            onChangeText={setFullName}
+            onChangeText={(v) => { setFullName(v); clearFieldError('fullName'); }}
             placeholder="Your full name"
             autoCapitalize="words"
+            returnKeyType="next"
+            onSubmitEditing={() => emailRef.current?.focus()}
+            error={errors.fullName}
+            shakeTrigger={errors.fullName ? shakeTrigger : 0}
             icon={<User size={20} color={colors.textTertiary} strokeWidth={2} />}
           />
           <Input
+            ref={emailRef}
             label="Email"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(v) => { setEmail(v); clearFieldError('email'); }}
             placeholder="your@email.com"
             keyboardType="email-address"
             autoCapitalize="none"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            error={errors.email}
+            shakeTrigger={errors.email ? shakeTrigger : 0}
             icon={<Mail size={20} color={colors.textTertiary} strokeWidth={2} />}
           />
           <Input
+            ref={passwordRef}
             label="Password"
             value={password}
-            onChangeText={setPassword}
-            placeholder="Create a password"
+            onChangeText={(v) => { setPassword(v); clearFieldError('password'); }}
+            placeholder="Min. 8 characters"
             secureTextEntry
+            returnKeyType="next"
+            onSubmitEditing={() => confirmRef.current?.focus()}
+            error={errors.password}
+            shakeTrigger={errors.password ? shakeTrigger : 0}
             icon={<Lock size={20} color={colors.textTertiary} strokeWidth={2} />}
           />
           <Input
+            ref={confirmRef}
             label="Confirm Password"
             value={confirmPassword}
-            onChangeText={setConfirmPassword}
+            onChangeText={(v) => { setConfirmPassword(v); clearFieldError('confirmPassword'); }}
             placeholder="Confirm your password"
             secureTextEntry
+            returnKeyType="go"
+            onSubmitEditing={handleSignup}
+            error={errors.confirmPassword}
+            shakeTrigger={errors.confirmPassword ? shakeTrigger : 0}
             icon={<Lock size={20} color={colors.textTertiary} strokeWidth={2} />}
           />
 
-          <Pressable
+          <PressableScale
             style={styles.termsRow}
-            onPress={() => setTermsAccepted((v) => !v)}
+            onPress={() => {
+              haptics.tap();
+              setTermsAccepted((v) => !v);
+              clearFieldError('terms');
+            }}
+            accessibilityRole="checkbox"
+            accessibilityLabel="I am 18+ and agree to the Terms of Service and Privacy Policy"
+            accessibilityState={{ checked: termsAccepted }}
           >
             <View
               style={[
                 styles.checkbox,
                 {
-                  borderColor: termsAccepted ? colors.primary : colors.border,
+                  borderColor: errors.terms ? colors.error : termsAccepted ? colors.primary : colors.border,
                   backgroundColor: termsAccepted ? colors.primary : 'transparent',
                 },
               ]}
@@ -159,13 +227,15 @@ export default function SignupScreen() {
                 Privacy Policy
               </Text>
             </Text>
-          </Pressable>
+          </PressableScale>
+          {errors.terms && (
+            <Text style={[styles.termsError, { color: colors.error }]}>{errors.terms}</Text>
+          )}
 
           <Button
             title="Continue"
             onPress={handleSignup}
             loading={loading}
-            disabled={!termsAccepted}
             size="lg"
             fullWidth
             icon={<ArrowRight size={20} color={colors.onPrimary} strokeWidth={2} />}
@@ -176,11 +246,11 @@ export default function SignupScreen() {
           <Text style={[styles.bottomText, { color: colors.textSecondary }]}>
             Already have an account?
           </Text>
-          <Pressable onPress={handleBack}>
+          <PressableScale onPress={handleBack} scaleValue={0.95} accessibilityRole="link" accessibilityLabel="Sign In" accessibilityHint="Double tap to go back to sign in">
             <Text style={[styles.linkText, { color: colors.primary }]}>
               Sign In
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -210,7 +280,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: Spacing.sm,
     marginTop: Spacing.md,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   checkbox: {
     width: 22,
@@ -225,6 +295,10 @@ const styles = StyleSheet.create({
     ...Typography.subheadline,
     flex: 1,
     lineHeight: 20,
+  },
+  termsError: {
+    ...Typography.caption1,
+    marginBottom: Spacing.sm,
   },
   bottomRow: {
     flexDirection: 'row',

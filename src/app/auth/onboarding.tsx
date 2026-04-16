@@ -1,31 +1,27 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
 } from 'react-native-reanimated';
 import {
   Camera,
   Building2,
   ArrowRight,
 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../../hooks/useHaptics';
+import { toast } from '../../lib/toast';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { Button } from '../../components/ui/Button';
+import { PressableScale } from '../../components/ui/PressableScale';
 import {
   Typography,
   Spacing,
   BorderRadius,
   Shadows,
-  Springs,
 } from '../../constants/theme';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface RoleCardProps {
   title: string;
@@ -45,30 +41,17 @@ function RoleCard({
   onPress,
 }: RoleCardProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.96, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
+  const haptics = useHaptics();
 
   const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
     onPress();
-  }, [onPress]);
+  }, [onPress, haptics]);
 
   return (
-    <AnimatedPressable
+    <PressableScale
+      scaleValue={0.96}
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       style={[
         styles.roleCard,
         {
@@ -76,8 +59,11 @@ function RoleCard({
           borderColor: selected ? colors.primary : colors.border,
           borderWidth: selected ? 2 : 1,
         },
-        animatedStyle,
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${description}`}
+      accessibilityState={{ selected }}
+      accessibilityHint="Double tap to select this role"
     >
       <View
         style={[
@@ -110,12 +96,13 @@ function RoleCard({
           </View>
         ))}
       </View>
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
 export default function OnboardingScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signUp } = useStore();
@@ -136,12 +123,12 @@ export default function OnboardingScreen() {
     const { fullName, email, password } = params;
 
     if (!fullName || !email || !password) {
-      Alert.alert('Error', 'Missing registration details. Please go back and try again.');
+      toast.error('Missing registration details. Please go back and try again.');
       return;
     }
 
     setLoading(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptics.success();
 
     const success = await signUp(email, password, fullName, selectedRole);
     setLoading(false);
@@ -149,10 +136,7 @@ export default function OnboardingScreen() {
     if (success) {
       router.replace('/(tabs)');
     } else {
-      Alert.alert(
-        'Sign Up Failed',
-        'Could not create your account. The email may already be in use.'
-      );
+      toast.error('Sign Up Failed: Could not create your account. The email may already be in use.');
     }
   }, [selectedRole, params, signUp, router]);
 
@@ -168,7 +152,7 @@ export default function OnboardingScreen() {
       ]}
     >
       <Animated.View entering={FadeInDown.duration(600).delay(100)}>
-        <Text style={[styles.title, { color: colors.text }]}>
+        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
           Choose your role
         </Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
