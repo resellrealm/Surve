@@ -1,18 +1,21 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import { Share } from 'react-native';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
-  Image,
   Pressable,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsOffline } from '../../hooks/useIsOffline';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { AdaptiveImage } from '../../components/ui/AdaptiveImage';
+import { ImageGallery } from '../../components/ui/ImageGallery';
+import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ArrowLeft,
   Share2,
   Heart,
   MapPin,
@@ -23,34 +26,45 @@ import {
   Calendar,
   Camera,
   TrendingUp,
+  BarChart3,
+  Eye,
+  MousePointerClick,
+  FileText,
 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
+import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
+import { toast } from '../../lib/toast';
+import { AnimatedLikeButton } from '../../components/ui/AnimatedLikeButton';
+import { fetchListingAnalytics } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
+import { PressableScale } from '../../components/ui/PressableScale';
 import { Avatar } from '../../components/ui/Avatar';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
 import { RequirementTag, formatFollowers } from '../../components/listing/RequirementTag';
 import { ListingCard } from '../../components/listing/ListingCard';
+import {
+  AnalyticsChart,
+  AnalyticsSkeletonCard,
+} from '../../components/listing/AnalyticsChart';
+import { ListingDetailSkeleton } from '../../components/ui/Skeleton';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { formatCurrencyRange } from '../../lib/currency';
 import {
   Typography,
   Spacing,
   BorderRadius,
   Shadows,
+  Colors,
 } from '../../constants/theme';
-import type { Listing } from '../../types';
+import type { Listing, ListingAnalyticsSummary } from '../../types';
 
-function formatDeadline(deadline: string): string {
-  const d = new Date(deadline);
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+import { formatDateLong } from '../../lib/dateFormat';
+
+const formatDeadline = formatDateLong;
 
 function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -61,7 +75,8 @@ export default function ListingDetailScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { listings, user } = useStore();
+  const isOffline = useIsOffline();
+  const { listings, user, listingsLoading, savedListings, toggleSavedListing, fetchListings } = useStore();
 
   const listing = useMemo(
     () => listings.find((l) => l.id === id),
@@ -81,16 +96,39 @@ export default function ListingDetailScreen() {
   }, [listings, listing]);
 
   const isCreator = user?.role === 'creator';
+  const isBusiness = user?.role === 'business';
+  const haptics = useHaptics();
 
-  const handleBack = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
-  }, [router]);
+  const [analytics, setAnalytics] = useState<ListingAnalyticsSummary | null>(
+    null
+  );
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsExpanded, setAnalyticsExpanded] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+
+  const galleryImages = useMemo(
+    () => (listing?.image_url ? [listing.image_url] : []),
+    [listing?.image_url]
+  );
+
+  const openGallery = useCallback(() => {
+    haptics.tap();
+    setGalleryOpen(true);
+  }, [haptics]);
+
+  useEffect(() => {
+    if (!isBusiness || !id) return;
+    setAnalyticsLoading(true);
+    fetchListingAnalytics(id)
+      .then(setAnalytics)
+      .catch(() => {})
+      .finally(() => setAnalyticsLoading(false));
+  }, [isBusiness, id]);
 
   const handleApply = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptics.success();
     if (isCreator) {
-      Alert.alert('Application Sent', 'Your application has been submitted. The business will review your profile.');
+      toast.success('Application Sent: Your application has been submitted. The business will review your profile.');
     } else {
       router.push(`/(listing)/create`);
     }
@@ -103,55 +141,45 @@ export default function ListingDetailScreen() {
     [router]
   );
 
+  if (!listing && listingsLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <ScreenHeader transparent />
+        <ListingDetailSkeleton />
+      </View>
+    );
+  }
+
   if (!listing) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.topBar, { paddingTop: insets.top }]}>
-          <Pressable onPress={handleBack} style={styles.backButton}>
-            <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
-          </Pressable>
-        </View>
-        <View style={styles.errorState}>
-          <Text style={[styles.errorText, { color: colors.text }]}>
-            Listing not found
-          </Text>
-        </View>
+        <ScreenHeader />
+        <ErrorState
+          title="Listing not found"
+          message="We couldn't load this listing. It may have been removed or there was a connection issue."
+          onRetry={fetchListings}
+        />
       </View>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar style="light" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {/* Hero Image */}
-        <View style={styles.heroContainer}>
-          <Image source={{ uri: listing.image_url }} style={styles.heroImage} />
-          <View style={[styles.topBar, { paddingTop: insets.top }]}>
-            <Pressable
-              onPress={handleBack}
-              style={[styles.topButton, { backgroundColor: colors.overlay }]}
-            >
-              <ArrowLeft size={22} color={colors.onPrimary} strokeWidth={2} />
-            </Pressable>
-            <View style={styles.topRight}>
-              <Pressable
-                style={[styles.topButton, { backgroundColor: colors.overlay }]}
-                onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-              >
-                <Heart size={22} color={colors.onPrimary} strokeWidth={2} />
-              </Pressable>
-              <Pressable
-                style={[styles.topButton, { backgroundColor: colors.overlay }]}
-                onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-              >
-                <Share2 size={22} color={colors.onPrimary} strokeWidth={2} />
-              </Pressable>
-            </View>
-          </View>
-        </View>
+        <Pressable
+          style={styles.heroContainer}
+          onPress={openGallery}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`${listing.title} cover image, tap to open gallery`}
+          accessibilityHint="Opens a full-screen image viewer with pinch-to-zoom"
+        >
+          <AdaptiveImage source={{ uri: listing.image_url }} style={styles.heroImage} contentFit="cover" gradient overlayOpacity={0.2} blurhash={listing.image_blurhash} accessibilityLabel={`${listing.title} cover image`} />
+        </Pressable>
 
         {/* Content */}
         <View style={styles.content}>
@@ -162,16 +190,19 @@ export default function ListingDetailScreen() {
               <Badge text={`${listing.applicants_count} applicants`} variant="info" />
             </View>
 
-            <Text style={[styles.title, { color: colors.text }]}>
+            <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">
               {listing.title}
             </Text>
 
             {/* Business Info */}
-            <Pressable
+            <PressableScale
               style={[
                 styles.businessRow,
                 { borderColor: colors.borderLight },
               ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Business: ${listing.business.business_name}, ${listing.business.location}`}
+              accessibilityHint="Double tap to view business profile"
             >
               <Avatar
                 uri={listing.business.image_url}
@@ -204,7 +235,7 @@ export default function ListingDetailScreen() {
                   {listing.business.location}
                 </Text>
               </View>
-            </Pressable>
+            </PressableScale>
           </Animated.View>
 
           {/* Pay Range */}
@@ -218,7 +249,7 @@ export default function ListingDetailScreen() {
                 />
                 <View>
                   <Text style={[styles.payAmount, { color: colors.primary }]}>
-                    ${listing.pay_min} - ${listing.pay_max}
+                    {formatCurrencyRange(listing.pay_min, listing.pay_max)}
                   </Text>
                   <Text
                     style={[styles.payLabel, { color: colors.textSecondary }]}
@@ -232,7 +263,7 @@ export default function ListingDetailScreen() {
 
           {/* Description */}
           <Animated.View entering={FadeInDown.duration(500).delay(300)}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
               Description
             </Text>
             <Text style={[styles.description, { color: colors.textSecondary }]}>
@@ -242,7 +273,7 @@ export default function ListingDetailScreen() {
 
           {/* Requirements */}
           <Animated.View entering={FadeInDown.duration(500).delay(400)}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
               Requirements
             </Text>
             <View style={styles.requirementsGrid}>
@@ -263,7 +294,7 @@ export default function ListingDetailScreen() {
 
           {/* Details */}
           <Animated.View entering={FadeInDown.duration(500).delay(500)}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
               Details
             </Text>
             <View style={styles.detailsList}>
@@ -306,10 +337,194 @@ export default function ListingDetailScreen() {
             </View>
           </Animated.View>
 
+          {/* Analytics (Business only) */}
+          {isBusiness && (
+            <Animated.View entering={FadeInDown.duration(500).delay(550)}>
+              <PressableScale
+                onPress={() => {
+                  haptics.tap();
+                  setAnalyticsExpanded((v) => !v);
+                }}
+                style={styles.analyticsSectionHeader}
+                accessibilityRole="button"
+                accessibilityLabel={`Performance analytics, ${analyticsExpanded ? 'collapse' : 'expand'}`}
+                accessibilityState={{ expanded: analyticsExpanded }}
+              >
+                <View style={styles.analyticsTitleRow}>
+                  <BarChart3
+                    size={20}
+                    color={colors.primary}
+                    strokeWidth={2}
+                  />
+                  <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
+                    Performance
+                  </Text>
+                </View>
+                <Text style={[styles.expandToggle, { color: colors.primary }]}>
+                  {analyticsExpanded ? 'Hide' : 'Show'}
+                </Text>
+              </PressableScale>
+
+              {/* Summary row (always visible) */}
+              {analyticsLoading ? (
+                <View style={styles.analyticsSummaryRow}>
+                  {[0, 1, 2].map((i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.summaryCard,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.borderLight,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.skeletonBlock,
+                          { backgroundColor: colors.skeleton },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : analytics ? (
+                <View style={styles.analyticsSummaryRow}>
+                  <View
+                    style={[
+                      styles.summaryCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.borderLight,
+                      },
+                    ]}
+                  >
+                    <Eye
+                      size={18}
+                      color={colors.primary}
+                      strokeWidth={2}
+                    />
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>
+                      {analytics.total_views.toLocaleString()}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.summaryLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Views
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.summaryCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.borderLight,
+                      },
+                    ]}
+                  >
+                    <MousePointerClick
+                      size={18}
+                      color={colors.secondary}
+                      strokeWidth={2}
+                    />
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>
+                      {analytics.total_clicks.toLocaleString()}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.summaryLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Clicks
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.summaryCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.borderLight,
+                      },
+                    ]}
+                  >
+                    <FileText
+                      size={18}
+                      color={colors.warning}
+                      strokeWidth={2}
+                    />
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>
+                      {analytics.total_applications.toLocaleString()}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.summaryLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Applications
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Expanded charts */}
+              {analyticsExpanded && analytics && analytics.daily.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chartsScroll}
+                >
+                  <AnalyticsChart
+                    data={analytics.daily}
+                    metric="views"
+                    color={colors.primary}
+                    label="Views"
+                    total={analytics.total_views}
+                    delta={analytics.views_delta}
+                  />
+                  <AnalyticsChart
+                    data={analytics.daily}
+                    metric="clicks"
+                    color={colors.secondary}
+                    label="Clicks"
+                    total={analytics.total_clicks}
+                    delta={analytics.clicks_delta}
+                  />
+                  <AnalyticsChart
+                    data={analytics.daily}
+                    metric="applications"
+                    color={colors.warning}
+                    label="Applications"
+                    total={analytics.total_applications}
+                    delta={analytics.applications_delta}
+                  />
+                </ScrollView>
+              )}
+
+              {analyticsExpanded && analyticsLoading && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chartsScroll}
+                >
+                  {[0, 1, 2].map((i) => (
+                    <AnalyticsSkeletonCard key={i} colors={colors} />
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={{ height: Spacing.xxl }} />
+            </Animated.View>
+          )}
+
           {/* Similar Listings */}
           {similarListings.length > 0 && (
             <Animated.View entering={FadeInDown.duration(500).delay(600)}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
                 Similar Listings
               </Text>
               {similarListings.map((l) => (
@@ -325,6 +540,51 @@ export default function ListingDetailScreen() {
           <View style={{ height: 100 }} />
         </View>
       </ScrollView>
+
+      {/* Floating header over hero */}
+      <View style={styles.floatingHeader} pointerEvents="box-none">
+        <ScreenHeader
+          transparent
+          right={
+            <View style={styles.topRight}>
+              <AnimatedLikeButton
+                active={!!id && savedListings.includes(id)}
+                onToggle={() => id && toggleSavedListing(id)}
+                activeColor="#FF3B6F"
+                inactiveColor={colors.onPrimary}
+                size={44}
+                style={{ backgroundColor: colors.overlay }}
+                accessibilityLabel={savedListings.includes(id ?? '') ? 'Unsave listing' : 'Save listing'}
+              >
+                {({ color, fill }) => (
+                  <Heart size={20} color={color} fill={fill} strokeWidth={2} />
+                )}
+              </AnimatedLikeButton>
+              <PressableScale
+                scaleValue={0.9}
+                hitSlop={8}
+                onPress={async () => {
+                  haptics.tap();
+                  try {
+                    await Share.share({
+                      title: listing.title,
+                      message: `${listing.title} — on Surve\nhttps://surve.app/listing/${listing.id}`,
+                      url: `https://surve.app/listing/${listing.id}`,
+                    });
+                  } catch {
+                    // user cancelled
+                  }
+                }}
+                style={[styles.topButton, { backgroundColor: colors.overlay }]}
+                accessibilityRole="button"
+                accessibilityLabel="Share listing"
+              >
+                <Share2 size={20} color={colors.onPrimary} strokeWidth={2} />
+              </PressableScale>
+            </View>
+          }
+        />
+      </View>
 
       {/* Bottom CTA */}
       <Animated.View
@@ -343,16 +603,23 @@ export default function ListingDetailScreen() {
             Pay range
           </Text>
           <Text style={[styles.ctaPayAmount, { color: colors.text }]}>
-            ${listing.pay_min} - ${listing.pay_max}
+            {formatCurrencyRange(listing.pay_min, listing.pay_max)}
           </Text>
         </View>
         <Button
-          title={isCreator ? 'Apply Now' : 'Edit Listing'}
+          title={isOffline && isCreator ? 'Offline' : isCreator ? 'Apply Now' : 'Edit Listing'}
           onPress={handleApply}
+          disabled={isOffline && isCreator}
           size="lg"
           style={styles.ctaButton}
         />
       </Animated.View>
+
+      <ImageGallery
+        visible={galleryOpen}
+        images={galleryImages}
+        onClose={() => setGalleryOpen(false)}
+      />
     </View>
   );
 }
@@ -372,31 +639,23 @@ const styles = StyleSheet.create({
     height: 280,
     resizeMode: 'cover',
   },
-  topBar: {
+  floatingHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.sm,
+    zIndex: 10,
   },
   topButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   topRight: {
     flexDirection: 'row',
     gap: Spacing.sm,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
   },
   content: {
     paddingHorizontal: Spacing.lg,
@@ -498,12 +757,50 @@ const styles = StyleSheet.create({
   ctaButton: {
     minWidth: 150,
   },
-  errorState: {
+  analyticsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+    minHeight: 44,
+  },
+  analyticsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  expandToggle: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+  },
+  analyticsSummaryRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  summaryCard: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: Spacing.xs,
+    ...Shadows.sm,
   },
-  errorText: {
-    ...Typography.title3,
+  summaryValue: {
+    ...Typography.headline,
+    fontWeight: '700',
+  },
+  summaryLabel: {
+    ...Typography.caption2,
+  },
+  chartsScroll: {
+    gap: Spacing.md,
+    paddingRight: Spacing.lg,
+  },
+  skeletonBlock: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.sm,
   },
 });

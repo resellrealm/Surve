@@ -1,32 +1,56 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
-  Image,
-  Pressable,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { AdaptiveImage } from '../../components/ui/AdaptiveImage';
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+  useSharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 import {
-  ArrowLeft,
   Star,
   MapPin,
   CheckCircle,
   Send,
   ExternalLink,
+  MoreVertical,
+  Flag,
+  AlertTriangle,
+  X,
+  Check,
+  UserPlus,
+  UserCheck,
 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../hooks/useTheme';
+import { useHaptics } from '../../hooks/useHaptics';
 import { Avatar } from '../../components/ui/Avatar';
-import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { AnimatedLikeButton } from '../../components/ui/AnimatedLikeButton';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
 import { StatsRow } from '../../components/creator/StatsRow';
+import { CreatorProfileSkeleton } from '../../components/ui/Skeleton';
+import { ErrorState } from '../../components/ui/ErrorState';
 import * as api from '../../lib/api';
+import { useStore } from '../../lib/store';
 import {
   Typography,
   Spacing,
@@ -35,14 +59,20 @@ import {
 } from '../../constants/theme';
 import type { Creator, Review } from '../../types';
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+const REPORT_REASONS = [
+  { key: 'spam', label: 'Spam or misleading' },
+  { key: 'inappropriate', label: 'Inappropriate content' },
+  { key: 'harassment', label: 'Harassment or bullying' },
+  { key: 'impersonation', label: 'Impersonation' },
+  { key: 'fraud', label: 'Fraud or scam' },
+  { key: 'other', label: 'Other' },
+] as const;
+
+const MAX_DESCRIPTION_LENGTH = 500;
+
+import { formatDateShort } from '../../lib/dateFormat';
+
+const formatDate = formatDateShort;
 
 function ReviewCard({ review }: { review: Review }) {
   const { colors } = useTheme();
@@ -88,7 +118,305 @@ function ReviewCard({ review }: { review: Review }) {
       <Text style={[styles.reviewComment, { color: colors.textSecondary }]}>
         {review.comment}
       </Text>
+      {review.reply_text && (
+        <View
+          style={[
+            styles.replyBox,
+            {
+              backgroundColor: colors.surfaceSecondary,
+              borderLeftColor: colors.primary,
+            },
+          ]}
+        >
+          <Text style={[styles.replyLabel, { color: colors.primary }]}>
+            RESPONSE
+          </Text>
+          <Text style={[styles.replyText, { color: colors.text }]}>
+            {review.reply_text}
+          </Text>
+          {review.replied_at && (
+            <Text style={[styles.replyDate, { color: colors.textTertiary }]}>
+              {formatDate(review.replied_at)}
+            </Text>
+          )}
+        </View>
+      )}
     </View>
+  );
+}
+
+function ReportModal({
+  visible,
+  onClose,
+  creatorName,
+  targetUserId,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  creatorName: string;
+  targetUserId: string;
+}) {
+  const { colors } = useTheme();
+  const haptics = useHaptics();
+  const insets = useSafeAreaInsets();
+  const currentUser = useStore((s) => s.user);
+
+  const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  const [description, setDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const resetAndClose = useCallback(() => {
+    setSelectedReason(null);
+    setDescription('');
+    setSubmitted(false);
+    onClose();
+  }, [onClose]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!selectedReason || !currentUser) return;
+    haptics.confirm();
+    setSubmitting(true);
+    const ok = await api.reportUser(
+      currentUser.id,
+      targetUserId,
+      selectedReason,
+      description.trim() || undefined,
+    );
+    setSubmitting(false);
+    if (ok) {
+      haptics.success();
+      setSubmitted(true);
+    } else {
+      haptics.error();
+    }
+  }, [selectedReason, currentUser, targetUserId, description, haptics]);
+
+  const handleSelectReason = useCallback(
+    (key: string) => {
+      haptics.select();
+      setSelectedReason(key);
+    },
+    [haptics],
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={resetAndClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.modalContainer, { backgroundColor: colors.background }]}
+      >
+        {/* Header */}
+        <View
+          style={[
+            styles.modalHeader,
+            {
+              borderBottomColor: colors.borderLight,
+              paddingTop: insets.top > 0 ? insets.top : Spacing.lg,
+            },
+          ]}
+        >
+          <PressableScale
+            scaleValue={0.9}
+            onPress={() => {
+              haptics.tap();
+              resetAndClose();
+            }}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={styles.modalCloseBtn}
+          >
+            <X size={22} color={colors.text} strokeWidth={2.2} />
+          </PressableScale>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>
+            Report Profile
+          </Text>
+          <View style={styles.modalCloseBtn} />
+        </View>
+
+        {submitted ? (
+          <Animated.View
+            entering={FadeInDown.duration(400)}
+            style={styles.successContainer}
+          >
+            <View
+              style={[
+                styles.successIcon,
+                { backgroundColor: colors.successLight },
+              ]}
+            >
+              <Check size={32} color={colors.success} strokeWidth={2.5} />
+            </View>
+            <Text style={[styles.successTitle, { color: colors.text }]}>
+              Report Submitted
+            </Text>
+            <Text
+              style={[
+                styles.successBody,
+                { color: colors.textSecondary },
+              ]}
+            >
+              Thanks for helping keep Surve safe. We'll review your report and
+              take action if needed.
+            </Text>
+            <Button
+              title="Done"
+              onPress={resetAndClose}
+              size="lg"
+              style={styles.successBtn}
+            />
+          </Animated.View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={[
+              styles.modalBody,
+              { paddingBottom: insets.bottom + Spacing.xl },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View
+              style={[
+                styles.warningBanner,
+                { backgroundColor: colors.warningLight },
+              ]}
+            >
+              <AlertTriangle
+                size={18}
+                color={colors.warning}
+                strokeWidth={2}
+              />
+              <Text
+                style={[styles.warningText, { color: colors.warning }]}
+              >
+                Reports are reviewed by our team. False reports may result in
+                account restrictions.
+              </Text>
+            </View>
+
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>
+              Why are you reporting {creatorName}?
+            </Text>
+
+            {REPORT_REASONS.map((reason) => {
+              const isSelected = selectedReason === reason.key;
+              return (
+                <PressableScale
+                  key={reason.key}
+                  onPress={() => handleSelectReason(reason.key)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={reason.label}
+                  accessibilityState={{ selected: isSelected }}
+                  style={[
+                    styles.reasonRow,
+                    {
+                      backgroundColor: isSelected
+                        ? colors.primaryLight + '12'
+                        : colors.surface,
+                      borderColor: isSelected
+                        ? colors.primary
+                        : colors.borderLight,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.radioOuter,
+                      {
+                        borderColor: isSelected
+                          ? colors.primary
+                          : colors.border,
+                      },
+                    ]}
+                  >
+                    {isSelected && (
+                      <View
+                        style={[
+                          styles.radioInner,
+                          { backgroundColor: colors.primary },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.reasonLabel,
+                      {
+                        color: isSelected ? colors.primary : colors.text,
+                      },
+                    ]}
+                  >
+                    {reason.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+
+            <Text
+              style={[
+                styles.sectionLabel,
+                { color: colors.text, marginTop: Spacing.xl },
+              ]}
+            >
+              Additional details (optional)
+            </Text>
+            <View
+              style={[
+                styles.textAreaWrap,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <TextInput
+                value={description}
+                onChangeText={(t) =>
+                  t.length <= MAX_DESCRIPTION_LENGTH && setDescription(t)
+                }
+                placeholder="Tell us more about what happened…"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                style={[styles.textArea, { color: colors.text }]}
+                maxLength={MAX_DESCRIPTION_LENGTH}
+                textAlignVertical="top"
+              />
+              <Text
+                style={[styles.charCount, { color: colors.textTertiary }]}
+              >
+                {description.length}/{MAX_DESCRIPTION_LENGTH}
+              </Text>
+            </View>
+
+            <Button
+              title={submitting ? 'Submitting…' : 'Submit Report'}
+              onPress={handleSubmit}
+              size="lg"
+              disabled={!selectedReason || submitting}
+              variant="primary"
+              style={{ marginTop: Spacing.xl }}
+              icon={
+                <Flag
+                  size={18}
+                  color={
+                    !selectedReason || submitting
+                      ? colors.textTertiary
+                      : colors.onPrimary
+                  }
+                  strokeWidth={2}
+                />
+              }
+            />
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -97,48 +425,86 @@ export default function CreatorProfileScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const haptics = useHaptics();
 
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const headerBgStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 60], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  const headerBorderStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [50, 60], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  const { followedCreators, toggleFollowedCreator, user: currentUser } = useStore();
   const [creator, setCreator] = React.useState<Creator | null>(null);
   const [creatorReviews, setCreatorReviews] = React.useState<Review[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [reportVisible, setReportVisible] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const isFollowed = creator ? followedCreators.includes(creator.id) : false;
+
+  const refetchCreator = useCallback(() => {
+    setRetryCount((c) => c + 1);
+  }, []);
 
   React.useEffect(() => {
     if (!id) return;
-    // Fetch creator by profile ID — need to get all creators and find by id
+    api.trackProfileView(id, currentUser?.id ?? null);
+  }, [id, currentUser?.id]);
+
+  React.useEffect(() => {
+    if (!id) return;
+    setLoading(true);
     api.getCreators().then((creators) => {
       const found = creators.find((c) => c.id === id) ?? null;
       setCreator(found);
+      setLoading(false);
       if (found) {
         api.getReviews(found.user_id).then(setCreatorReviews);
       }
     });
-  }, [id]);
-
-  const handleBack = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
-  }, [router]);
+  }, [id, retryCount]);
 
   const handleInvite = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, []);
+    haptics.success();
+  }, [haptics]);
 
   const handleMessage = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, []);
+    haptics.confirm();
+  }, [haptics]);
+
+  const handleOpenReport = useCallback(() => {
+    haptics.confirm();
+    setReportVisible(true);
+  }, [haptics]);
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <ScreenHeader />
+        <View style={{ paddingTop: Spacing.lg }}>
+          <CreatorProfileSkeleton />
+        </View>
+      </View>
+    );
+  }
 
   if (!creator) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.topBar, { paddingTop: insets.top }]}>
-          <Pressable onPress={handleBack} style={styles.backButton}>
-            <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
-          </Pressable>
-        </View>
-        <View style={styles.errorState}>
-          <Text style={[styles.errorText, { color: colors.text }]}>
-            Creator not found
-          </Text>
-        </View>
+        <ScreenHeader />
+        <ErrorState
+          title="Creator not found"
+          message="We couldn't load this profile. It may have been removed or there was a connection issue."
+          onRetry={refetchCreator}
+        />
       </View>
     );
   }
@@ -152,18 +518,87 @@ export default function CreatorProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <StatusBar style="light" />
+      <View style={styles.floatingHeader} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: colors.background },
+            headerBgStyle,
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.floatingHeaderBorder,
+            { backgroundColor: colors.border },
+            headerBorderStyle,
+          ]}
+        />
+        <ScreenHeader
+          transparent
+          right={
+            <View style={styles.headerRightRow}>
+              <AnimatedLikeButton
+                active={isFollowed}
+                onToggle={() => creator && toggleFollowedCreator(creator.id)}
+                activeColor={colors.primary}
+                inactiveColor={colors.text}
+                size={44}
+                style={[styles.headerIconBtn, { backgroundColor: colors.surface }]}
+                accessibilityLabel={isFollowed ? 'Unfollow creator' : 'Follow creator'}
+              >
+                {({ color }) =>
+                  isFollowed ? (
+                    <UserCheck size={20} color={color} strokeWidth={2.2} />
+                  ) : (
+                    <UserPlus size={20} color={color} strokeWidth={2.2} />
+                  )
+                }
+              </AnimatedLikeButton>
+              <PressableScale
+                scaleValue={0.85}
+                onPress={handleOpenReport}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Report this profile"
+                style={[
+                  styles.headerIconBtn,
+                  { backgroundColor: colors.surface },
+                ]}
+              >
+                <MoreVertical size={20} color={colors.text} strokeWidth={2.2} />
+              </PressableScale>
+            </View>
+          }
+        />
+      </View>
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + 100 },
         ]}
       >
-        {/* Header */}
-        <View style={[styles.topBar, { paddingTop: insets.top }]}>
-          <Pressable onPress={handleBack} style={styles.backButton}>
-            <ArrowLeft size={24} color={colors.text} strokeWidth={2} />
-          </Pressable>
+        {/* Hero Image */}
+        <View style={styles.heroContainer}>
+          <AdaptiveImage
+            source={{
+              uri:
+                creator.portfolio_urls.length > 0
+                  ? creator.portfolio_urls[0]
+                  : creator.user.avatar_url ?? undefined,
+            }}
+            style={styles.heroImage}
+            contentFit="cover"
+            accessibilityLabel={`${creator.user.full_name} cover photo`}
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.5)']}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
         </View>
 
         {/* Profile Header */}
@@ -178,7 +613,7 @@ export default function CreatorProfileScreen() {
           />
           <View style={styles.nameSection}>
             <View style={styles.nameRow}>
-              <Text style={[styles.name, { color: colors.text }]}>
+              <Text style={[styles.name, { color: colors.text }]} accessibilityRole="header">
                 {creator.user.full_name}
               </Text>
               {creator.verified && (
@@ -277,7 +712,7 @@ export default function CreatorProfileScreen() {
         {/* Performance */}
         <Animated.View entering={FadeInDown.duration(500).delay(350)}>
           <Card style={styles.statsCard}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
               Track Record
             </Text>
             <View style={styles.perfRow}>
@@ -330,7 +765,7 @@ export default function CreatorProfileScreen() {
         {/* Portfolio */}
         {creator.portfolio_urls.length > 0 && (
           <Animated.View entering={FadeInDown.duration(500).delay(400)}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
               Portfolio
             </Text>
             <ScrollView
@@ -339,10 +774,12 @@ export default function CreatorProfileScreen() {
               contentContainerStyle={styles.portfolioScroll}
             >
               {creator.portfolio_urls.map((url, idx) => (
-                <Image
+                <AdaptiveImage
                   key={idx}
                   source={{ uri: url }}
+                  contentFit="cover"
                   style={styles.portfolioImage}
+                  accessibilityLabel={`Portfolio image ${idx + 1}`}
                 />
               ))}
             </ScrollView>
@@ -357,6 +794,7 @@ export default function CreatorProfileScreen() {
                 styles.sectionTitle,
                 { color: colors.text, marginTop: Spacing.xxl },
               ]}
+              accessibilityRole="header"
             >
               Reviews ({creatorReviews.length})
             </Text>
@@ -365,7 +803,7 @@ export default function CreatorProfileScreen() {
             ))}
           </Animated.View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Bottom CTA */}
       <Animated.View
@@ -394,6 +832,15 @@ export default function CreatorProfileScreen() {
           style={styles.ctaButtonHalf}
         />
       </Animated.View>
+
+      {creator && (
+        <ReportModal
+          visible={reportVisible}
+          onClose={() => setReportVisible(false)}
+          creatorName={creator.user.full_name}
+          targetUserId={creator.user_id}
+        />
+      )}
     </View>
   );
 }
@@ -405,18 +852,33 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.lg,
   },
-  topBar: {
-    flexDirection: 'row',
-    marginBottom: Spacing.md,
+  heroContainer: {
+    marginHorizontal: -Spacing.lg,
+    height: 240,
+    position: 'relative',
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
+  heroImage: {
+    width: '100%',
+    height: 240,
+  },
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  floatingHeaderBorder: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: Spacing.xl,
     marginBottom: Spacing.xl,
   },
   nameSection: {
@@ -547,6 +1009,26 @@ const styles = StyleSheet.create({
     ...Typography.subheadline,
     lineHeight: 22,
   },
+  replyBox: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderLeftWidth: 3,
+    gap: 4,
+  },
+  replyLabel: {
+    ...Typography.caption2,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  replyText: {
+    ...Typography.footnote,
+    lineHeight: 20,
+  },
+  replyDate: {
+    ...Typography.caption2,
+    marginTop: 2,
+  },
   bottomCta: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -558,12 +1040,130 @@ const styles = StyleSheet.create({
   ctaButtonHalf: {
     flex: 1,
   },
-  errorState: {
-    flex: 1,
+  headerRightRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  headerIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  errorText: {
-    ...Typography.title3,
+  // ─── Report Modal ──────────────────────────────────────────────────
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalCloseBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    ...Typography.headline,
+    textAlign: 'center',
+    flex: 1,
+  },
+  modalBody: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.xl,
+  },
+  warningText: {
+    ...Typography.caption1,
+    flex: 1,
+    lineHeight: 20,
+  },
+  sectionLabel: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+    marginBottom: Spacing.md,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    marginBottom: Spacing.sm,
+    minHeight: 52,
+  },
+  radioOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  reasonLabel: {
+    ...Typography.body,
+    flex: 1,
+  },
+  textAreaWrap: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    minHeight: 120,
+  },
+  textArea: {
+    ...Typography.body,
+    minHeight: 80,
+  },
+  charCount: {
+    ...Typography.caption2,
+    textAlign: 'right',
+    marginTop: Spacing.xs,
+  },
+  successContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+  },
+  successIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+  },
+  successTitle: {
+    ...Typography.title2,
+    marginBottom: Spacing.sm,
+  },
+  successBody: {
+    ...Typography.body,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  successBtn: {
+    marginTop: Spacing.xxl,
+    alignSelf: 'stretch',
   },
 });
