@@ -1,28 +1,46 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   FlatList,
   RefreshControl,
-  Pressable,
+  Platform,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
+import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useSharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+  runOnJS,
+} from 'react-native-reanimated';
+import { useScrollToTop } from '@react-navigation/native';
 import { Bell, Plus, AlertTriangle, RotateCcw, Compass } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
+import { useHaptics } from '../../hooks/useHaptics';
+import { usePermissionPrime } from '../../hooks/usePermissionPrime';
 import { useStore } from '../../lib/store';
+import { supabase } from '../../lib/supabase';
 import { ListingCard } from '../../components/listing/ListingCard';
 import { ListingFilterChips } from '../../components/listing/ListingFilters';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { PermissionPrime } from '../../components/ui/PermissionPrime';
 import { CreatorCard } from '../../components/creator/CreatorCard';
+import { BusinessDashboard } from '../../components/dashboard/BusinessDashboard';
 import { Avatar } from '../../components/ui/Avatar';
 import { Skeleton, ListingCardSkeleton } from '../../components/ui/Skeleton';
 import { categories } from '../../constants/filters';
 import * as api from '../../lib/api';
 import { Typography, Spacing, BorderRadius, Layout } from '../../constants/theme';
 import type { Listing, Category, Creator } from '../../types';
+
+const NOTIF_BANNER_DISMISSED_KEY = 'surve_notif_banner_dismissed';
 
 function HomeSkeleton() {
   return (
@@ -39,24 +57,99 @@ function HomeSkeleton() {
         <Skeleton width="40%" height={16} />
       </View>
       <View style={{ paddingHorizontal: Spacing.lg, marginTop: Spacing.xl }}>
-        <ListingCardSkeleton />
-        <ListingCardSkeleton />
-        <ListingCardSkeleton />
+        <ListingCardSkeleton delay={0} />
+        <ListingCardSkeleton delay={150} />
+        <ListingCardSkeleton delay={300} />
       </View>
     </View>
   );
 }
 
+function useNotificationPermission() {
+  const user = useStore((s) => s.user);
+  const notifPrime = usePermissionPrime('notifications');
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const dismissed = await SecureStore.getItemAsync(NOTIF_BANNER_DISMISSED_KEY);
+      if (dismissed || cancelled) return;
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted' && !cancelled) {
+        notifPrime.prime(async () => {
+          const token = (await Notifications.getExpoPushTokenAsync()).data;
+          await supabase.from('users').update({ expo_push_token: token }).eq('id', user.id);
+          await SecureStore.setItemAsync(NOTIF_BANNER_DISMISSED_KEY, '1');
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  return notifPrime;
+}
+
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { listings, user, listingsLoading, listingsError, fetchListings } = useStore();
+  const savedScrollY = useStore((s) => s.scrollPositions.home);
+  const setScrollPosition = useStore((s) => s.setScrollPosition);
+  const notifPrime = useNotificationPermission();
+
+  const listRef = useRef<FlatList<Listing>>(null);
+  // Double-tap on the Home tab scrolls to top. We satisfy useScrollToTop by
+  // passing a ref with a `scrollToTop` method.
+  useScrollToTop(
+    useRef({
+      scrollToTop: () => listRef.current?.scrollToOffset({ offset: 0, animated: true }),
+    })
+  );
+
+  const persistScroll = useCallback(
+    (y: number) => setScrollPosition('home', y),
+    [setScrollPosition]
+  );
+
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+      // Persist off the JS thread — cheap set into Zustand.
+      runOnJS(persistScroll)(event.contentOffset.y);
+    },
+  });
+
+  const restoredRef = useRef(false);
+  const restoreScrollIfNeeded = useCallback(() => {
+    if (restoredRef.current) return;
+    if (savedScrollY > 0) {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: savedScrollY, animated: false });
+      });
+    }
+    restoredRef.current = true;
+  }, [savedScrollY]);
+
+  const headerBgStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 60], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  const headerBorderStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [50, 60], [0, 1], Extrapolation.CLAMP),
+  }));
 
   const isBusiness = user?.role === 'business';
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [topCreators, setTopCreators] = useState<Creator[]>([]);
+
+  if (isBusiness) {
+    return <BusinessDashboard />;
+  }
 
   const filteredListings = useMemo(() => {
     let items = listings;
@@ -74,11 +167,11 @@ export default function HomeScreen() {
   }, [isBusiness]);
 
   const handleRefresh = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap();
     setRefreshing(true);
     await fetchListings();
     setRefreshing(false);
-  }, [fetchListings]);
+  }, [fetchListings, haptics]);
 
   const handleListingPress = useCallback(
     (listing: Listing) => {
@@ -95,9 +188,9 @@ export default function HomeScreen() {
   );
 
   const handleCreateListing = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.confirm();
     router.push('/(listing)/create');
-  }, [router]);
+  }, [router, haptics]);
 
   const handleCategorySelect = useCallback((key: string) => {
     setSelectedCategory(key);
@@ -105,7 +198,7 @@ export default function HomeScreen() {
 
   if (listingsLoading && listings.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + Spacing.sm }]}>
+      <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + Spacing.lg }]}>
         <HomeSkeleton />
       </View>
     );
@@ -124,7 +217,7 @@ export default function HomeScreen() {
           <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
             {listingsError}
           </Text>
-          <Pressable
+          <PressableScale
             onPress={handleRefresh}
             style={[styles.retryButton, { backgroundColor: colors.primary }]}
             accessibilityRole="button"
@@ -132,7 +225,7 @@ export default function HomeScreen() {
           >
             <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
             <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
     );
@@ -140,46 +233,20 @@ export default function HomeScreen() {
 
   const renderHeader = () => (
     <View>
-      <View
-        style={[
-          styles.headerBar,
-          { paddingTop: insets.top + Spacing.sm },
-        ]}
-      >
-        <View style={styles.headerLeft}>
-          <Avatar
-            uri={user?.avatar_url ?? null}
-            name={user?.full_name ?? 'User'}
-            size={40}
-          />
-          <View style={styles.headerText}>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              Welcome back
-            </Text>
-            <Text style={[styles.userName, { color: colors.text }]}>
-              {user?.full_name ?? 'User'}
-            </Text>
-          </View>
-        </View>
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/(profile)/notifications');
-          }}
-          style={[styles.notifButton, { backgroundColor: colors.surface }]}
-          accessibilityRole="button"
-          accessibilityLabel="Notifications"
-        >
-          <Bell size={22} color={colors.text} strokeWidth={2} />
-          <View style={[styles.notifDot, { backgroundColor: colors.primary, borderColor: colors.surface }]} />
-        </Pressable>
-      </View>
+      <View style={{ height: insets.top + Spacing.lg + 42 + Spacing.lg }} />
+
+      <PermissionPrime
+        kind="notifications"
+        visible={notifPrime.visible}
+        onConfirm={notifPrime.confirm}
+        onDismiss={notifPrime.dismiss}
+      />
 
       <Animated.View
         entering={FadeInDown.duration(400).delay(100)}
         style={styles.titleSection}
       >
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
           {isBusiness ? 'Your Listings' : 'Discover Opportunities'}
         </Text>
         <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
@@ -194,7 +261,7 @@ export default function HomeScreen() {
           entering={FadeInDown.duration(400).delay(150)}
           style={styles.createListingRow}
         >
-          <Pressable
+          <PressableScale
             onPress={handleCreateListing}
             style={[
               styles.createListingButton,
@@ -205,7 +272,7 @@ export default function HomeScreen() {
           >
             <Plus size={20} color={colors.onPrimary} strokeWidth={2} />
             <Text style={[styles.createListingText, { color: colors.onPrimary }]}>Create New Listing</Text>
-          </Pressable>
+          </PressableScale>
         </Animated.View>
       )}
 
@@ -255,7 +322,7 @@ export default function HomeScreen() {
   );
 
   const renderEmpty = () => (
-    <View style={styles.emptyState} accessibilityRole="text">
+    <Animated.View entering={FadeInDown.duration(400)} style={styles.emptyState} accessibilityRole="text">
       <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceSecondary }]}>
         <Compass size={40} color={colors.textTertiary} strokeWidth={1.5} />
       </View>
@@ -265,24 +332,25 @@ export default function HomeScreen() {
       <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
         {isBusiness
           ? 'Create your first listing to connect with creators'
-          : 'New opportunities are posted daily — check back soon'}
+          : 'Check back soon for new opportunities'}
       </Text>
       {isBusiness && (
-        <Pressable
+        <PressableScale
           onPress={handleCreateListing}
           style={[styles.emptyCta, { backgroundColor: colors.primary }]}
           accessibilityRole="button"
           accessibilityLabel="Create your first listing"
         >
           <Text style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Create Listing</Text>
-        </Pressable>
+        </PressableScale>
       )}
-    </View>
+    </Animated.View>
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <FlatList
+      <Animated.FlatList
+        ref={listRef as any}
         data={filteredListings}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
@@ -290,6 +358,9 @@ export default function HomeScreen() {
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        onContentSizeChange={restoreScrollIfNeeded}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -298,6 +369,56 @@ export default function HomeScreen() {
           />
         }
       />
+
+      <View style={styles.fixedHeader} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: colors.surface },
+            headerBgStyle,
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.fixedHeaderBorder,
+            { backgroundColor: colors.border },
+            headerBorderStyle,
+          ]}
+        />
+        <View
+          style={[styles.headerBar, { paddingTop: insets.top + Spacing.lg }]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.headerLeft}>
+            <Avatar
+              uri={user?.avatar_url ?? null}
+              name={user?.full_name ?? 'User'}
+              size={40}
+            />
+            <View style={styles.headerText}>
+              <Text style={[styles.greeting, { color: colors.textSecondary }]} accessibilityRole="text">
+                Welcome back
+              </Text>
+              <Text style={[styles.userName, { color: colors.text }]} accessibilityRole="header">
+                {user?.full_name ?? 'User'}
+              </Text>
+            </View>
+          </View>
+          <PressableScale
+            scaleValue={0.9}
+            onPress={() => {
+              haptics.tap();
+              router.push('/(profile)/notifications');
+            }}
+            style={[styles.notifButton, { backgroundColor: colors.surface }]}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+          >
+            <Bell size={22} color={colors.text} strokeWidth={2} />
+            <View style={[styles.notifDot, { backgroundColor: colors.primary, borderColor: colors.surface }]} />
+          </PressableScale>
+        </View>
+      </View>
     </View>
   );
 }
@@ -305,6 +426,20 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  fixedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  fixedHeaderBorder: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
   },
   headerBar: {
     flexDirection: 'row',
@@ -453,3 +588,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+

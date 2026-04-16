@@ -1,44 +1,39 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   FlatList,
-  Pressable,
+  RefreshControl,
+  Alert,
 } from 'react-native';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
 } from 'react-native-reanimated';
-import { MessageCircle, AlertTriangle, RotateCcw } from 'lucide-react-native';
+import { AlertTriangle, RotateCcw, Archive, BellOff } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../../hooks/useHaptics';
+import { toast } from '../../lib/toast';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
 import { Avatar } from '../../components/ui/Avatar';
+import { SwipeableRow, type SwipeAction } from '../../components/ui/SwipeableRow';
+import { PressableScale } from '../../components/ui/PressableScale';
 import { Skeleton } from '../../components/ui/Skeleton';
-import { Typography, Spacing, BorderRadius, Shadows, Springs, Layout } from '../../constants/theme';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/theme';
 import type { Conversation } from '../../types';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface ConversationRowProps {
   conversation: Conversation;
   onPress: (conversation: Conversation) => void;
 }
 
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+import { formatRelative } from '../../lib/dateFormat';
 
-  if (diffHours < 1) return 'Just now';
-  if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
-  if (diffHours < 48) return 'Yesterday';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function formatTime(dateStr: string): string {
+  return formatRelative(dateStr);
 }
 
 function ConversationSkeleton() {
@@ -62,38 +57,24 @@ function ConversationSkeleton() {
 
 function ConversationRow({ conversation, onPress }: ConversationRowProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.98, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
+  const haptics = useHaptics();
 
   const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     onPress(conversation);
   }, [conversation, onPress]);
 
   const hasUnread = conversation.unread_count > 0;
 
   return (
-    <AnimatedPressable
+    <PressableScale
+      scaleValue={0.98}
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       style={[
         styles.conversationRow,
         {
           backgroundColor: hasUnread ? colors.activeLight : 'transparent',
         },
-        animatedStyle,
       ]}
       accessibilityRole="button"
       accessibilityLabel={`Conversation with ${conversation.participant_name}${hasUnread ? `, ${conversation.unread_count} unread` : ''}`}
@@ -166,15 +147,27 @@ function ConversationRow({ conversation, onPress }: ConversationRowProps) {
           )}
         </View>
       </View>
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
 export default function MessagesScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { conversations, messagesLoading, messagesError, fetchConversations } = useStore();
+  const { conversations, messagesLoading, messagesError, fetchConversations, removeConversation } = useStore();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    haptics.tap();
+    setRefreshing(true);
+    try {
+      await fetchConversations();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchConversations]);
 
   const handleConversationPress = useCallback(
     (conversation: Conversation) => {
@@ -183,49 +176,81 @@ export default function MessagesScreen() {
     [router]
   );
 
+  const handleArchive = useCallback(
+    (conversation: Conversation) => {
+      Alert.alert(
+        'Archive conversation?',
+        `Remove your chat with ${conversation.participant_name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Archive',
+            style: 'destructive',
+            onPress: () => {
+              removeConversation(conversation.id);
+              haptics.success();
+              toast.success('Conversation archived');
+            },
+          },
+        ],
+      );
+    },
+    [removeConversation, haptics],
+  );
+
+  const handleMute = useCallback(
+    (conversation: Conversation) => {
+      haptics.confirm();
+      toast.success(`${conversation.participant_name} muted`);
+    },
+    [haptics],
+  );
+
+  const getSwipeActions = useCallback(
+    (conversation: Conversation): SwipeAction[] => [
+      {
+        key: 'mute',
+        label: 'Mute',
+        icon: <BellOff size={22} color="#FFFFFF" strokeWidth={2} />,
+        color: Colors.light.warning,
+        onPress: () => handleMute(conversation),
+      },
+      {
+        key: 'archive',
+        label: 'Archive',
+        icon: <Archive size={22} color="#FFFFFF" strokeWidth={2} />,
+        color: Colors.light.error,
+        onPress: () => handleArchive(conversation),
+      },
+    ],
+    [handleArchive, handleMute],
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: Conversation; index: number }) => (
       <Animated.View entering={FadeInDown.duration(400).delay(index * 80)}>
-        <ConversationRow
-          conversation={item}
-          onPress={handleConversationPress}
-        />
+        <SwipeableRow rightActions={getSwipeActions(item)}>
+          <ConversationRow
+            conversation={item}
+            onPress={handleConversationPress}
+          />
+        </SwipeableRow>
       </Animated.View>
     ),
-    [handleConversationPress]
+    [handleConversationPress, getSwipeActions]
   );
 
   const renderEmpty = useCallback(
     () => (
-      <View style={styles.emptyState} accessibilityRole="text">
-        <View
-          style={[
-            styles.emptyIcon,
-            { backgroundColor: colors.surfaceSecondary },
-          ]}
-        >
-          <MessageCircle size={40} color={colors.textTertiary} strokeWidth={1.5} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: colors.text }]}>
-          No messages yet
-        </Text>
-        <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-          When you connect with a business or creator, your conversations will appear here
-        </Text>
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/(tabs)/search');
-          }}
-          style={[styles.emptyCta, { backgroundColor: colors.primary }]}
-          accessibilityRole="button"
-          accessibilityLabel="Discover listings"
-        >
-          <Text style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Discover Listings</Text>
-        </Pressable>
-      </View>
+      <EmptyState
+        icon="chatbubbles-outline"
+        title="No conversations yet"
+        body="Start chatting after you apply to a listing or get a booking request."
+        ctaLabel="Discover listings"
+        onPress={() => router.push('/(tabs)/search')}
+      />
     ),
-    [colors, router]
+    [router]
   );
 
   const totalUnread = conversations.reduce(
@@ -236,8 +261,8 @@ export default function MessagesScreen() {
   if (messagesLoading && conversations.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Messages</Text>
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.lg }]}>
+          <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">Messages</Text>
         </View>
         <ConversationSkeleton />
       </View>
@@ -247,8 +272,8 @@ export default function MessagesScreen() {
   if (messagesError && conversations.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} accessibilityRole="alert">
-        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Messages</Text>
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.lg }]}>
+          <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">Messages</Text>
         </View>
         <View style={styles.errorState}>
           <View style={[styles.errorIcon, { backgroundColor: colors.cancelledLight }]}>
@@ -260,7 +285,7 @@ export default function MessagesScreen() {
           <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
             {messagesError}
           </Text>
-          <Pressable
+          <PressableScale
             onPress={() => fetchConversations()}
             style={[styles.retryButton, { backgroundColor: colors.primary }]}
             accessibilityRole="button"
@@ -268,7 +293,7 @@ export default function MessagesScreen() {
           >
             <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
             <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
     );
@@ -276,8 +301,8 @@ export default function MessagesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Messages</Text>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.lg }]}>
+        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Messages</Text>
         {totalUnread > 0 && (
           <View
             style={[
@@ -300,6 +325,14 @@ export default function MessagesScreen() {
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ItemSeparatorComponent={() => (
           <View
             style={[

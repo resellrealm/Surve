@@ -4,17 +4,12 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
-  Image,
-  Alert,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
 } from 'react-native-reanimated';
 import {
   Settings,
@@ -32,15 +27,21 @@ import {
   AlertTriangle,
   RotateCcw,
   User as UserIcon,
+  Info,
+  Bookmark,
 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../../hooks/useHaptics';
+import { toast } from '../../lib/toast';
 import { useTheme } from '../../hooks/useTheme';
 import { useStore } from '../../lib/store';
+import { AdaptiveImage } from '../../components/ui/AdaptiveImage';
 import { Avatar } from '../../components/ui/Avatar';
 import { Badge } from '../../components/ui/Badge';
 import { PlatformBadge } from '../../components/creator/PlatformBadge';
 import { StatsRow } from '../../components/creator/StatsRow';
 import { Card } from '../../components/ui/Card';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { PulsingDot } from '../../components/ui/PulsingDot';
 import { Skeleton } from '../../components/ui/Skeleton';
 import * as api from '../../lib/api';
 import {
@@ -48,11 +49,8 @@ import {
   Spacing,
   BorderRadius,
   Shadows,
-  Springs,
   Layout,
 } from '../../constants/theme';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface SettingsRowProps {
   icon: React.ReactNode;
@@ -60,6 +58,7 @@ interface SettingsRowProps {
   subtitle?: string;
   onPress: () => void;
   destructive?: boolean;
+  accessibilityHint?: string;
 }
 
 function ProfileSkeleton() {
@@ -86,35 +85,24 @@ function SettingsRow({
   subtitle,
   onPress,
   destructive = false,
+  accessibilityHint,
 }: SettingsRowProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.98, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
+  const haptics = useHaptics();
 
   const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     onPress();
-  }, [onPress]);
+  }, [onPress, haptics]);
 
   return (
-    <AnimatedPressable
+    <PressableScale
+      scaleValue={0.98}
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={[styles.settingsRow, animatedStyle]}
+      style={styles.settingsRow}
       accessibilityRole="button"
       accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+      accessibilityHint={accessibilityHint}
     >
       <View
         style={[
@@ -144,21 +132,27 @@ function SettingsRow({
         )}
       </View>
       <ChevronRight size={18} color={colors.textTertiary} strokeWidth={2} />
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
+  const haptics = useHaptics();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, logout } = useStore();
+  const { user, logout, unreadNotificationsCount } = useStore();
 
   const isCreator = user?.role === 'creator';
   const [creatorData, setCreatorData] = React.useState<import('../../types').Creator | null>(null);
   const [businessData, setBusinessData] = React.useState<import('../../types').Business | null>(null);
   const [profileLoading, setProfileLoading] = React.useState(true);
   const [profileError, setProfileError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!user) return;
+    api.trackProfileView(user.id, user.id);
+  }, [user?.id]);
 
   React.useEffect(() => {
     if (!user) return;
@@ -185,7 +179,7 @@ export default function ProfileScreen() {
   }, [user, isCreator]);
 
   const handleLogout = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    haptics.warning();
     logout();
     router.replace('/auth');
   }, [logout, router]);
@@ -196,7 +190,7 @@ export default function ProfileScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + Spacing.sm + Spacing.xl },
+          { paddingTop: insets.top + Spacing.lg },
         ]}
       >
         <ProfileSkeleton />
@@ -217,7 +211,7 @@ export default function ProfileScreen() {
           <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
             {profileError}
           </Text>
-          <Pressable
+          <PressableScale
             onPress={handleRetry}
             style={[styles.retryButton, { backgroundColor: colors.primary }]}
             accessibilityRole="button"
@@ -225,7 +219,7 @@ export default function ProfileScreen() {
           >
             <RotateCcw size={18} color={colors.onPrimary} strokeWidth={2} />
             <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try Again</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
     );
@@ -237,7 +231,7 @@ export default function ProfileScreen() {
       contentContainerStyle={[
         styles.scrollContent,
         {
-          paddingTop: insets.top + Spacing.sm,
+          paddingTop: insets.top + Spacing.lg,
           paddingBottom: Layout.tabBarHeight + 40,
         },
       ]}
@@ -248,14 +242,21 @@ export default function ProfileScreen() {
         entering={FadeInDown.duration(500).delay(100)}
         style={styles.profileHeader}
       >
-        <Avatar
-          uri={user?.avatar_url ?? null}
-          name={user?.full_name ?? 'User'}
-          size={80}
-        />
-        <Text style={[styles.profileName, { color: colors.text }]}>
+        <PressableScale onPress={() => router.push('/(profile)/edit')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit profile picture">
+          <Avatar
+            uri={user?.avatar_url ?? null}
+            name={user?.full_name ?? 'User'}
+            size={88}
+          />
+        </PressableScale>
+        <Text style={[styles.profileName, { color: colors.text }]} accessibilityRole="header">
           {user?.full_name}
         </Text>
+        {user?.username && (
+          <Text style={[styles.profileHandle, { color: colors.textSecondary }]}>
+            @{user.username}
+          </Text>
+        )}
         <View style={styles.roleBadgeRow}>
           <Badge
             text={isCreator ? 'Creator' : 'Business'}
@@ -266,17 +267,53 @@ export default function ProfileScreen() {
             <Badge text="Verified" variant="success" />
           )}
         </View>
-        {(isCreator ? creatorData?.location : businessData?.location) && (
+        {user?.bio && (
+          <Text style={[styles.profileBio, { color: colors.textSecondary }]}>
+            {user.bio}
+          </Text>
+        )}
+        {(user?.location ??
+          (isCreator ? creatorData?.location : businessData?.location)) && (
           <View style={styles.locationRow}>
             <MapPin size={14} color={colors.textSecondary} strokeWidth={2} />
             <Text style={[styles.locationText, { color: colors.textSecondary }]}>
-              {isCreator ? creatorData?.location : businessData?.location}
+              {user?.location ??
+                (isCreator ? creatorData?.location : businessData?.location)}
             </Text>
           </View>
         )}
+        <PressableScale
+          onPress={() => router.push('/(profile)/edit')}
+          style={[
+            styles.editProfileBtn,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile"
+        >
+          <Text style={[styles.editProfileText, { color: colors.text }]}>
+            Edit profile
+          </Text>
+        </PressableScale>
       </Animated.View>
 
       {/* Creator-specific section */}
+      {isCreator && creatorData && (
+        <Animated.View entering={FadeInDown.duration(500).delay(180)}>
+          <StripeConnectCard
+            creatorData={creatorData}
+            onPress={async () => {
+              const url = await api.getStripeConnectLink();
+              if (url) Linking.openURL(url);
+              else toast.error('Not available. Try again in a moment.');
+            }}
+          />
+        </Animated.View>
+      )}
+
       {isCreator && creatorData && (
         <Animated.View entering={FadeInDown.duration(500).delay(200)}>
           <Card style={styles.statsCard}>
@@ -361,9 +398,11 @@ export default function ProfileScreen() {
               contentContainerStyle={styles.portfolioScroll}
             >
               {creatorData.portfolio_urls.map((url, idx) => (
-                <Image
+                <AdaptiveImage
                   key={idx}
                   source={{ uri: url }}
+                  contentFit="cover"
+                  overlayOpacity={0.18}
                   style={styles.portfolioImage}
                   accessibilityLabel={`Portfolio image ${idx + 1}`}
                 />
@@ -442,6 +481,7 @@ export default function ProfileScreen() {
             title={isCreator ? 'Earnings' : 'Spending'}
             subtitle="Payouts, transactions, history"
             onPress={() => router.push('/(profile)/earnings')}
+            accessibilityHint="Opens your earnings and transaction history"
           />
           <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
@@ -449,6 +489,7 @@ export default function ProfileScreen() {
             title="Payment methods"
             subtitle="Cards, Apple Pay, bank"
             onPress={() => router.push('/(payment)/methods')}
+            accessibilityHint="Opens your saved payment methods"
           />
         </Card>
       </Animated.View>
@@ -457,10 +498,26 @@ export default function ProfileScreen() {
       <Animated.View entering={FadeInDown.duration(500).delay(420)}>
         <Card style={styles.settingsCard} padding={0}>
           <SettingsRow
-            icon={<Bell size={20} color={colors.primary} strokeWidth={2} />}
+            icon={
+              <View>
+                <Bell size={20} color={colors.primary} strokeWidth={2} />
+                {unreadNotificationsCount > 0 && (
+                  <PulsingDot size={8} style={styles.notifBadge} />
+                )}
+              </View>
+            }
             title="Notifications"
-            subtitle="Activity, alerts, payouts"
+            subtitle={unreadNotificationsCount > 0 ? `${unreadNotificationsCount} unread` : 'Activity, alerts, payouts'}
             onPress={() => router.push('/(profile)/notifications')}
+            accessibilityHint="Opens your notification feed"
+          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
+          <SettingsRow
+            icon={<Bookmark size={20} color={colors.primary} strokeWidth={2} />}
+            title="Saved searches"
+            subtitle="Quick-jump to filters you use"
+            onPress={() => router.push('/(profile)/saved-searches')}
+            accessibilityHint="Opens your saved search filters"
           />
           <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
@@ -468,6 +525,7 @@ export default function ProfileScreen() {
             title="Account & Privacy"
             subtitle="Password, email, data"
             onPress={() => router.push('/(profile)/account')}
+            accessibilityHint="Opens account and privacy settings"
           />
           <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
@@ -475,13 +533,23 @@ export default function ProfileScreen() {
             title="Preferences"
             subtitle="Theme, notifications"
             onPress={() => router.push('/(profile)/preferences')}
+            accessibilityHint="Opens theme and notification preferences"
           />
           <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
             icon={<HelpCircle size={20} color={colors.primary} strokeWidth={2} />}
             title="Help & Support"
             subtitle="FAQ, contact us"
-            onPress={() => Alert.alert('Help & Support', 'Contact us at support@surve.app')}
+            onPress={() => router.push('/(profile)/support')}
+            accessibilityHint="Opens help and support options"
+          />
+          <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
+          <SettingsRow
+            icon={<Info size={20} color={colors.primary} strokeWidth={2} />}
+            title="About"
+            subtitle="Version, legal, links"
+            onPress={() => router.push('/(profile)/about')}
+            accessibilityHint="Opens app version and legal information"
           />
           <View style={[styles.settingsSeparator, { backgroundColor: colors.borderLight }]} />
           <SettingsRow
@@ -489,6 +557,7 @@ export default function ProfileScreen() {
             title="Log Out"
             onPress={handleLogout}
             destructive
+            accessibilityHint="Signs you out of your account"
           />
         </Card>
       </Animated.View>
@@ -497,6 +566,60 @@ export default function ProfileScreen() {
         Surve v1.0.0
       </Text>
     </ScrollView>
+  );
+}
+
+function StripeConnectCard({
+  creatorData,
+  onPress,
+}: {
+  creatorData: import('../../types').Creator;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const connected = creatorData.stripe_onboarding_complete === true;
+  const started = Boolean(creatorData.stripe_account_id) && !connected;
+
+  const tone = connected
+    ? { bg: colors.completedLight, fg: colors.completed }
+    : started
+      ? { bg: colors.pendingLight, fg: colors.pending }
+      : { bg: colors.errorLight, fg: colors.error };
+
+  const title = connected
+    ? 'Payouts set up'
+    : started
+      ? 'Finish Stripe verification'
+      : 'Set up payouts';
+  const body = connected
+    ? 'Stripe Connect is active — payouts land in your bank after each completed booking.'
+    : started
+      ? 'Stripe needs a couple more details before it can send you money.'
+      : "Before you can get paid, connect your bank through Stripe. Takes about 2 minutes.";
+
+  return (
+    <PressableScale onPress={connected ? undefined : onPress} disabled={connected} accessibilityRole="button" accessibilityLabel={title}>
+      <Card style={styles.statsCard}>
+        <View style={styles.stripeRow}>
+          <View style={[styles.stripeIcon, { backgroundColor: tone.bg }]}>
+            <CreditCard size={20} color={tone.fg} strokeWidth={2} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.stripeTitle, { color: colors.text }]}>
+              {title}
+            </Text>
+            <Text
+              style={[styles.stripeBody, { color: colors.textSecondary }]}
+            >
+              {body}
+            </Text>
+          </View>
+          {!connected && (
+            <ChevronRight size={18} color={colors.textTertiary} strokeWidth={2} />
+          )}
+        </View>
+      </Card>
+    </PressableScale>
   );
 }
 
@@ -515,6 +638,29 @@ const styles = StyleSheet.create({
     ...Typography.title1,
     marginTop: Spacing.lg,
   },
+  profileHandle: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  profileBio: {
+    ...Typography.body,
+    textAlign: 'center',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    lineHeight: 22,
+  },
+  editProfileBtn: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+  },
+  editProfileText: {
+    ...Typography.subheadline,
+    fontWeight: '600',
+  },
   roleBadgeRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -531,6 +677,27 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     marginBottom: Spacing.lg,
+  },
+  stripeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  stripeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripeTitle: {
+    ...Typography.headline,
+    fontWeight: '700',
+  },
+  stripeBody: {
+    ...Typography.footnote,
+    marginTop: 2,
+    lineHeight: 18,
   },
   cardTitle: {
     ...Typography.headline,
@@ -645,5 +812,10 @@ const styles = StyleSheet.create({
   retryText: {
     ...Typography.subheadline,
     fontWeight: '600',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
   },
 });
