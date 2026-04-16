@@ -1,0 +1,62 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "done": "Done",
+    "next": "Next",
+    "back": "Back",
+    "continue": "Continue",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading…",
+    "error": "Error",
+    "retry": "Try again",
+    "skip": "Skip",
+    "search": "Search",
+    "send": "Send"
+  },
+  "auth": {
+    "sign_in": "Sign In",
+    "sign_up": "Sign Up",
+    "sign_out": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "forgot_password": "Forgot password?",
+    "reset_password": "Reset password"
+  },
+  "tabs": {
+    "home": "Home",
+    "search": "Search",
+    "bookings": "Bookings",
+    "messages": "Messages",
+    "profile": "Profile"
+  },
+  "booking": {
+    "status": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "active": "Active",
+      "in_progress": "In progress",
+      "proof_submitted": "Proof submitted",
+      "completed": "Completed",
+      "disputed": "Disputed",
+      "cancelled": "Cancelled",
+      "refunded": "Refunded"
+    },
+    "actions": {
+      "pay": "Pay",
+      "accept": "Accept",
+      "decline": "Decline",
+      "submit_proof": "Submit proof",
+      "approve": "Approve & pay",
+      "dispute": "Dispute",
+      "refund": "Request refund"
+    }
+  },
+  "empty": {
+    "bookings": "No bookings yet",
+    "messages": "No conversations yet",
+    "listings": "No listings yet"
+  }
+}

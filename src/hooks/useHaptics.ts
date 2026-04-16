@@ -2,16 +2,16 @@ import * as Haptics from 'expo-haptics';
 import { useCallback } from 'react';
 
 export function useHaptics() {
-  const light = useCallback(() => {
+  const tap = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  const medium = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const select = useCallback(() => {
+    Haptics.selectionAsync();
   }, []);
 
-  const heavy = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  const confirm = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
   const success = useCallback(() => {
@@ -26,9 +26,9 @@ export function useHaptics() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
   }, []);
 
-  const selection = useCallback(() => {
-    Haptics.selectionAsync();
+  const heavy = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
   }, []);
 
-  return { light, medium, heavy, success, warning, error, selection };
+  return { tap, select, confirm, success, warning, error, heavy };
 }
