@@ -89,3 +89,22 @@ src/app/
 - Cards have subtle border, `Shadows.sm`, scale-on-press
 - Filter chips use horizontal ScrollView
 - Mock data in `src/lib/mockData.ts` is the source of truth for screenshots
+
+## Autonomous-agent task rules (CEO queue)
+When invoked by the CEO queue with a TASK ID, treat these as non-negotiable:
+
+- Run `npx tsc --noEmit` after TS edits; fix errors before marking done.
+- Never commit .env/secrets. Assume .env is configured.
+- Prefer editing existing files; follow style in `src/components/ui/` and `src/app/`.
+- Use theme tokens from `src/constants/theme.ts` — no hardcoded colors/spacings.
+- Every Pressable needs a `useHaptics()` hook call + PressableScale wrap.
+- Stacked routes use the shared `ScreenHeader` from `src/components/ui/ScreenHeader.tsx`.
+- DB changes: use Supabase MCP (service_role from .env). Do NOT drop or destructively alter existing tables.
+- Stripe: keys land at the END. Wire full `@stripe/stripe-react-native` as if present. Do NOT block on Stripe tasks; mark completed with "wired, awaiting prod keys".
+- Other missing API keys (Resend, Expo push, SMS): BLOCK with a clear note.
+- Max 2 concurrent subprocesses if you spawn; never exceed.
+- Do NOT declare "done" just because a task finished — Surve must be fully shippable. Mention any out-of-scope gaps in SUMMARY so the CEO can append follow-ups.
+- POLISH BAR: haptics on every interactive, PressableScale on Pressables, safe-area top/bottom, skeleton (not spinner) for loading, empty states with illustration+CTA, inline form validation, reanimated springs, respect reduce-motion + dynamic type, >=44pt tap targets. Leave every touched screen more polished than found.
+
+## SUMMARY output contract
+On finish, last line must start with `SUMMARY:`. If blocked on creds/info that can't be auto-resolved, last line is `BLOCKED: <what you need>` and stop.
