@@ -19,6 +19,9 @@ export function Badge({ text, variant = 'default', style, small = false }: Badge
 
   return (
     <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={text}
       style={[
         styles.container,
         small && styles.small,

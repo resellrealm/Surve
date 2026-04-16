@@ -3,10 +3,10 @@ import {
   StyleSheet,
   View,
   TextInput,
-  Pressable,
 } from 'react-native';
+import { PressableScale } from './PressableScale';
 import { Search, X } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../../hooks/useHaptics';
 import { useTheme } from '../../hooks/useTheme';
 import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 
@@ -24,14 +24,16 @@ export function SearchBar({
   autoFocus = false,
 }: SearchBarProps) {
   const { colors } = useTheme();
+  const haptics = useHaptics();
 
   const handleClear = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     onChangeText('');
   }, [onChangeText]);
 
   return (
     <View
+      accessibilityRole="search"
       style={[
         styles.container,
         {
@@ -54,9 +56,9 @@ export function SearchBar({
         accessibilityLabel={placeholder}
       />
       {value.length > 0 && (
-        <Pressable onPress={handleClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear search">
+        <PressableScale scaleValue={0.9} onPress={handleClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear search">
           <X size={18} color={colors.textTertiary} strokeWidth={2} />
-        </Pressable>
+        </PressableScale>
       )}
     </View>
   );

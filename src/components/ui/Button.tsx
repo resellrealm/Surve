@@ -5,20 +5,14 @@ import {
   ActivityIndicator,
   type ViewStyle,
   type TextStyle,
-  Pressable,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import Animated from 'react-native-reanimated';
+import { useHaptics } from '../../hooks/useHaptics';
 import { useTheme } from '../../hooks/useTheme';
-import { Typography, Spacing, BorderRadius, Springs } from '../../constants/theme';
+import { Typography, Spacing, BorderRadius } from '../../constants/theme';
+import { PressableScale } from './PressableScale';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'outline';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'outline' | 'destructive';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps {
@@ -31,6 +25,8 @@ interface ButtonProps {
   icon?: React.ReactNode;
   style?: ViewStyle;
   fullWidth?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 const SIZE_CONFIG: Record<
@@ -64,41 +60,33 @@ export function Button({
   icon,
   style,
   fullWidth = false,
+  accessibilityLabel,
+  accessibilityHint,
 }: ButtonProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
+  const haptics = useHaptics();
   const sizeConfig = SIZE_CONFIG[size];
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.96, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
 
   const handlePress = useCallback(() => {
     if (disabled || loading) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (variant === 'primary') haptics.confirm();
+    else if (variant === 'destructive') haptics.warning();
+    else haptics.tap();
     onPress();
-  }, [disabled, loading, onPress]);
+  }, [disabled, loading, onPress, variant]);
 
   const containerStyle = getContainerStyle(variant, colors, disabled);
   const textColor = getTextColor(variant, colors, disabled);
 
   return (
-    <AnimatedPressable
+    <PressableScale
+      scaleValue={0.96}
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       disabled={disabled || loading}
       accessibilityRole="button"
-      accessibilityLabel={title}
-      accessibilityState={{ disabled: disabled || loading }}
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       style={[
         styles.base,
         {
@@ -107,7 +95,6 @@ export function Button({
           borderRadius: BorderRadius.md,
         },
         containerStyle,
-        animatedStyle,
         fullWidth && styles.fullWidth,
         style,
       ]}
@@ -115,7 +102,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'primary' ? colors.onPrimary : colors.primary}
+          color={(variant === 'primary' || variant === 'destructive') ? colors.onPrimary : colors.primary}
         />
       ) : (
         <>
@@ -131,7 +118,7 @@ export function Button({
           </Text>
         </>
       )}
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
@@ -165,6 +152,11 @@ function getContainerStyle(
         backgroundColor: 'transparent',
         opacity,
       };
+    case 'destructive':
+      return {
+        backgroundColor: colors.error,
+        opacity,
+      };
   }
 }
 
@@ -174,7 +166,7 @@ function getTextColor(
   disabled: boolean
 ): string {
   if (disabled) {
-    return variant === 'primary' ? 'rgba(255,255,255,0.7)' : colors.textTertiary;
+    return (variant === 'primary' || variant === 'destructive') ? 'rgba(255,255,255,0.7)' : colors.textTertiary;
   }
   switch (variant) {
     case 'primary':
@@ -184,6 +176,8 @@ function getTextColor(
     case 'outline':
     case 'ghost':
       return colors.primary;
+    case 'destructive':
+      return colors.onPrimary;
   }
 }
 

@@ -1,39 +1,22 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, Pressable, type ViewStyle } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
+import { StyleSheet, type ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useTheme } from '../../hooks/useTheme';
-import { Spacing, BorderRadius, Shadows, Springs } from '../../constants/theme';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+import { useHaptics } from '../../hooks/useHaptics';
+import { Spacing, BorderRadius, Shadows } from '../../constants/theme';
+import { PressableScale } from './PressableScale';
 
 interface CardProps {
   children: React.ReactNode;
   style?: ViewStyle;
   onPress?: () => void;
   padding?: number;
+  accessibilityLabel?: string;
 }
 
-export function Card({ children, style, onPress, padding }: CardProps) {
+export function Card({ children, style, onPress, padding, accessibilityLabel }: CardProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    if (!onPress) return;
-    scale.value = withSpring(0.97, Springs.snappy);
-  }, [onPress, scale]);
-
-  const handlePressOut = useCallback(() => {
-    if (!onPress) return;
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [onPress, scale]);
+  const haptics = useHaptics();
 
   const cardStyle: ViewStyle = {
     backgroundColor: colors.card,
@@ -44,16 +27,21 @@ export function Card({ children, style, onPress, padding }: CardProps) {
     borderColor: colors.borderLight,
   };
 
+  const handlePress = useCallback(() => {
+    haptics.tap();
+    onPress?.();
+  }, [haptics, onPress]);
+
   if (onPress) {
     return (
-      <AnimatedPressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={[cardStyle, animatedStyle, style]}
+      <PressableScale
+        onPress={handlePress}
+        style={[cardStyle, style]}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
       >
         {children}
-      </AnimatedPressable>
+      </PressableScale>
     );
   }
 
