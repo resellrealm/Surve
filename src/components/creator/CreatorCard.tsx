@@ -1,27 +1,22 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
+import { StyleSheet, View, Text } from 'react-native';
 import { Star } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../../hooks/useHaptics';
 import { Avatar } from '../ui/Avatar';
 import { PlatformBadge } from './PlatformBadge';
 import { StatsRow } from './StatsRow';
 import { Badge } from '../ui/Badge';
+import { PressableScale } from '../ui/PressableScale';
+import { ContextMenu } from '../ui/ContextMenu';
+import { useCreatorContextActions } from '../../hooks/useCardContextActions';
 import { useTheme } from '../../hooks/useTheme';
 import {
   Typography,
   Spacing,
   BorderRadius,
   Shadows,
-  Springs,
 } from '../../constants/theme';
 import type { Creator } from '../../types';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface CreatorCardProps {
   creator: Creator;
@@ -30,22 +25,11 @@ interface CreatorCardProps {
 
 export function CreatorCard({ creator, onPress }: CreatorCardProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.97, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
+  const haptics = useHaptics();
+  const menuActions = useCreatorContextActions(creator);
 
   const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     onPress(creator);
   }, [creator, onPress]);
 
@@ -56,10 +40,12 @@ export function CreatorCard({ creator, onPress }: CreatorCardProps) {
       : 'instagram';
 
   return (
-    <AnimatedPressable
+    <ContextMenu
+      actions={menuActions}
+      accessibilityLabel={`Creator: ${creator.user.full_name}, long press for options`}
+    >
+    <PressableScale
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       accessibilityRole="button"
       accessibilityLabel={`Creator: ${creator.user.full_name}, rated ${creator.rating.toFixed(1)}`}
       style={[
@@ -68,7 +54,6 @@ export function CreatorCard({ creator, onPress }: CreatorCardProps) {
           backgroundColor: colors.card,
           borderColor: colors.borderLight,
         },
-        animatedStyle,
       ]}
     >
       <View style={styles.header}>
@@ -76,6 +61,7 @@ export function CreatorCard({ creator, onPress }: CreatorCardProps) {
           uri={creator.user.avatar_url}
           name={creator.user.full_name}
           size={52}
+          blurhash={creator.user.avatar_blurhash}
         />
         <View style={styles.headerInfo}>
           <View style={styles.nameRow}>
@@ -121,7 +107,8 @@ export function CreatorCard({ creator, onPress }: CreatorCardProps) {
         engagementRate={creator.engagement_rate}
         avgViews={creator.avg_views}
       />
-    </AnimatedPressable>
+    </PressableScale>
+    </ContextMenu>
   );
 }
 

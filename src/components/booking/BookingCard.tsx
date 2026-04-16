@@ -1,64 +1,47 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
-import { Calendar, DollarSign } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { StyleSheet, View, Text } from 'react-native';
+import { Calendar, DollarSign, Check } from 'lucide-react-native';
+import { useHaptics } from '../../hooks/useHaptics';
 import { Avatar } from '../ui/Avatar';
 import { StatusBadge } from './StatusBadge';
+import { PressableScale } from '../ui/PressableScale';
 import { useTheme } from '../../hooks/useTheme';
 import {
   Typography,
   Spacing,
   BorderRadius,
   Shadows,
-  Springs,
 } from '../../constants/theme';
 import type { Booking } from '../../types';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface BookingCardProps {
   booking: Booking;
   onPress?: (booking: Booking) => void;
   userRole: 'creator' | 'business';
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+import { formatSmartDate } from '../../lib/dateFormat';
+import { formatCurrency } from '../../lib/currency';
 
-export function BookingCard({ booking, onPress, userRole }: BookingCardProps) {
+const formatDate = formatSmartDate;
+
+export function BookingCard({ booking, onPress, userRole, selectable, selected, onToggleSelect }: BookingCardProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    if (!onPress) return;
-    scale.value = withSpring(0.97, Springs.snappy);
-  }, [onPress, scale]);
-
-  const handlePressOut = useCallback(() => {
-    if (!onPress) return;
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [onPress, scale]);
+  const haptics = useHaptics();
 
   const handlePress = useCallback(() => {
+    if (selectable && onToggleSelect) {
+      haptics.select();
+      onToggleSelect(booking.id);
+      return;
+    }
     if (!onPress) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     onPress(booking);
-  }, [booking, onPress]);
+  }, [booking, onPress, selectable, onToggleSelect]);
 
   const displayName =
     userRole === 'creator'
@@ -70,23 +53,35 @@ export function BookingCard({ booking, onPress, userRole }: BookingCardProps) {
       : booking.creator.user.avatar_url;
 
   return (
-    <AnimatedPressable
+    <PressableScale
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      disabled={!onPress}
-      accessibilityRole="button"
+      disabled={!onPress && !selectable}
+      accessibilityRole={selectable ? 'checkbox' : 'button'}
+      accessibilityState={selectable ? { checked: selected } : undefined}
       accessibilityLabel={`Booking with ${displayName}, ${booking.listing.title}, status: ${booking.status}`}
       style={[
         styles.container,
         {
           backgroundColor: colors.card,
-          borderColor: colors.borderLight,
+          borderColor: selected ? colors.primary : colors.borderLight,
+          borderWidth: selected ? 2 : StyleSheet.hairlineWidth,
         },
-        animatedStyle,
       ]}
     >
       <View style={styles.header}>
+        {selectable && (
+          <View
+            style={[
+              styles.checkbox,
+              {
+                backgroundColor: selected ? colors.primary : 'transparent',
+                borderColor: selected ? colors.primary : colors.textTertiary,
+              },
+            ]}
+          >
+            {selected && <Check size={14} color={colors.onPrimary} strokeWidth={3} />}
+          </View>
+        )}
         <Avatar uri={displayAvatar} name={displayName} size={44} />
         <View style={styles.headerInfo}>
           <Text
@@ -109,7 +104,7 @@ export function BookingCard({ booking, onPress, userRole }: BookingCardProps) {
         <View style={styles.footerItem}>
           <DollarSign size={14} color={colors.primary} strokeWidth={2} />
           <Text style={[styles.footerText, { color: colors.text }]}>
-            ${booking.pay_agreed}
+            {formatCurrency(booking.pay_agreed)}
           </Text>
         </View>
         <View style={styles.footerItem}>
@@ -128,7 +123,7 @@ export function BookingCard({ booking, onPress, userRole }: BookingCardProps) {
           {booking.notes}
         </Text>
       )}
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
@@ -143,6 +138,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
   },
   headerInfo: {
     flex: 1,

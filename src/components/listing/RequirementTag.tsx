@@ -29,6 +29,9 @@ export function RequirementTag({ type, value }: RequirementTagProps) {
 
   return (
     <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${type} requirement: ${value}`}
       style={[
         styles.container,
         { backgroundColor: colors.surfaceSecondary },

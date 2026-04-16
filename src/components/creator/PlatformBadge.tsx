@@ -36,7 +36,12 @@ export function PlatformBadge({ platform }: PlatformBadgeProps) {
   const bg = isDark ? config.bgDark : config.bgLight;
 
   return (
-    <View style={[styles.container, { backgroundColor: bg }]}>
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`Platform: ${config.label}`}
+      style={[styles.container, { backgroundColor: bg }]}
+    >
       <Text style={[styles.text, { color: config.color }]}>
         {config.label}
       </Text>

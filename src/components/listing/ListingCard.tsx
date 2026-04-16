@@ -1,25 +1,23 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, Image, Pressable } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
-import { MapPin, Clock, Users } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { StyleSheet, View, Text } from 'react-native';
+import { MapPin, Clock, Users, Heart } from 'lucide-react-native';
+import { useHaptics } from '../../hooks/useHaptics';
 import { useTheme } from '../../hooks/useTheme';
+import { useStore } from '../../lib/store';
+import { AdaptiveImage } from '../ui/AdaptiveImage';
 import { PlatformBadge } from '../creator/PlatformBadge';
 import { Badge } from '../ui/Badge';
+import { PressableScale } from '../ui/PressableScale';
+import { AnimatedLikeButton } from '../ui/AnimatedLikeButton';
+import { ContextMenu } from '../ui/ContextMenu';
+import { useListingContextActions } from '../../hooks/useCardContextActions';
 import {
   Typography,
   Spacing,
   BorderRadius,
   Shadows,
-  Springs,
 } from '../../constants/theme';
 import type { Listing } from '../../types';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface ListingCardProps {
   listing: Listing;
@@ -48,30 +46,27 @@ function capitalizeFirst(s: string): string {
 
 export function ListingCard({ listing, onPress }: ListingCardProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.97, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
+  const haptics = useHaptics();
+  const { savedListings, toggleSavedListing } = useStore();
+  const isSaved = savedListings.includes(listing.id);
+  const menuActions = useListingContextActions(listing);
 
   const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap();
     onPress(listing);
   }, [listing, onPress]);
 
+  const handleToggleSave = useCallback(() => {
+    toggleSavedListing(listing.id);
+  }, [listing.id, toggleSavedListing]);
+
   return (
-    <AnimatedPressable
+    <ContextMenu
+      actions={menuActions}
+      accessibilityLabel={`Listing: ${listing.title}, long press for options`}
+    >
+    <PressableScale
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       accessibilityRole="button"
       accessibilityLabel={`Listing: ${listing.title} by ${listing.business.business_name}`}
       style={[
@@ -80,10 +75,34 @@ export function ListingCard({ listing, onPress }: ListingCardProps) {
           backgroundColor: colors.card,
           borderColor: colors.borderLight,
         },
-        animatedStyle,
       ]}
     >
-      <Image source={{ uri: listing.image_url }} style={styles.image} />
+      <View>
+        <AdaptiveImage
+          source={{ uri: listing.image_url }}
+          contentFit="cover"
+          transition={200}
+          cachePolicy="memory-disk"
+          gradient
+          overlayOpacity={0.18}
+          blurhash={listing.image_blurhash}
+          accessibilityLabel={`Photo for ${listing.title}`}
+          style={styles.image}
+        />
+        <AnimatedLikeButton
+          active={isSaved}
+          onToggle={handleToggleSave}
+          activeColor="#FF3B6F"
+          inactiveColor="rgba(255,255,255,0.9)"
+          size={36}
+          style={styles.bookmarkButton}
+          accessibilityLabel={isSaved ? 'Unsave listing' : 'Save listing'}
+        >
+          {({ color, fill }) => (
+            <Heart size={18} color={color} fill={fill} strokeWidth={2} />
+          )}
+        </AnimatedLikeButton>
+      </View>
       <View style={styles.content}>
         <View style={styles.topRow}>
           <View style={styles.badges}>
@@ -130,7 +149,8 @@ export function ListingCard({ listing, onPress }: ListingCardProps) {
           </View>
         </View>
       </View>
-    </AnimatedPressable>
+    </PressableScale>
+    </ContextMenu>
   );
 }
 
@@ -146,6 +166,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 160,
     resizeMode: 'cover',
+  },
+  bookmarkButton: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 18,
   },
   content: {
     padding: Spacing.lg,

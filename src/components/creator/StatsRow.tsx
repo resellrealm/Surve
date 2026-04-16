@@ -26,7 +26,7 @@ function StatItem({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
-    <View style={styles.statItem}>
+    <View accessible accessibilityLabel={`${label}: ${value}`} style={styles.statItem}>
       <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
       <Text style={[styles.statLabel, { color: colors.textTertiary }]}>
         {label}

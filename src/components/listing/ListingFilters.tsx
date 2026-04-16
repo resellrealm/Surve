@@ -1,15 +1,9 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, ScrollView, Pressable, Text } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { StyleSheet, ScrollView, Text } from 'react-native';
+import { useHaptics } from '../../hooks/useHaptics';
 import { useTheme } from '../../hooks/useTheme';
-import { Typography, Spacing, BorderRadius, Springs } from '../../constants/theme';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+import { PressableScale } from '../ui/PressableScale';
+import { Typography, Spacing, BorderRadius } from '../../constants/theme';
 
 interface FilterChipProps {
   label: string;
@@ -19,32 +13,20 @@ interface FilterChipProps {
 
 function FilterChip({ label, selected, onPress }: FilterChipProps) {
   const { colors } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.93, Springs.snappy);
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, Springs.bouncy);
-  }, [scale]);
+  const haptics = useHaptics();
 
   const handlePress = useCallback(() => {
-    Haptics.selectionAsync();
+    haptics.select();
     onPress();
   }, [onPress]);
 
   return (
-    <AnimatedPressable
+    <PressableScale
+      scaleValue={0.93}
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       accessibilityRole="button"
       accessibilityLabel={`Filter: ${label}`}
+      accessibilityHint="Filters results by this category"
       accessibilityState={{ selected }}
       style={[
         styles.chip,
@@ -52,7 +34,6 @@ function FilterChip({ label, selected, onPress }: FilterChipProps) {
           backgroundColor: selected ? colors.primary : colors.surface,
           borderColor: selected ? colors.primary : colors.border,
         },
-        animatedStyle,
       ]}
     >
       <Text
@@ -63,7 +44,7 @@ function FilterChip({ label, selected, onPress }: FilterChipProps) {
       >
         {label}
       </Text>
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
