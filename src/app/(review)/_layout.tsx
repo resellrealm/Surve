@@ -1,13 +1,15 @@
 import { Stack } from 'expo-router';
+import { useTheme } from '../../hooks/useTheme';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function ProfileStackLayout() {
+export default function ReviewLayout() {
+  const { colors } = useTheme();
   return (
-    <ErrorBoundary homeRoute="/(tabs)/profile">
+    <ErrorBoundary homeRoute="/(tabs)">
       <Stack
         screenOptions={{
           headerShown: false,
-          animation: 'slide_from_right',
+          contentStyle: { backgroundColor: colors.background },
         }}
       />
     </ErrorBoundary>

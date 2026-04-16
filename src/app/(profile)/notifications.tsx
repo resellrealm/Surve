@@ -1,10 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Image } from 'react-native';
+import React, { useState, useMemo, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
-  ChevronLeft,
   Calendar,
   MessageSquare,
   Star,
@@ -13,8 +12,13 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { AdaptiveImage } from '../../components/ui/AdaptiveImage';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { PressableScale } from '../../components/ui/PressableScale';
 import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
-import { mockNotifications, type AppNotification } from '../../lib/mockData';
+import type { AppNotification } from '../../lib/mockData';
+import { useStore } from '../../lib/store';
 
 const TYPE_ICON: Record<AppNotification['type'], any> = {
   booking: Calendar,
@@ -40,38 +44,60 @@ export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
 
-  const [items, setItems] = useState(mockNotifications);
+  const items = useStore((s) => s.notifications);
+  const markNotificationRead = useStore((s) => s.markNotificationRead);
+  const storeMarkAllRead = useStore((s) => s.markAllNotificationsRead);
+  const fetchNotifications = useStore((s) => s.fetchNotifications);
+
+  const [refreshing, setRefreshing] = useState(false);
   const unread = useMemo(() => items.filter((n) => !n.read).length, [items]);
 
-  const markAllRead = () => {
-    haptics.light();
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
+  const handleRefresh = useCallback(async () => {
+    haptics.tap();
+    setRefreshing(true);
+    await fetchNotifications();
+    setRefreshing(false);
+  }, [haptics, fetchNotifications]);
+
+  const markAllRead = useCallback(() => {
+    haptics.tap();
+    storeMarkAllRead();
+  }, [haptics, storeMarkAllRead]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
-        <Pressable
-          onPress={() => { haptics.light(); router.back(); }}
-          style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary }]}
-          hitSlop={8}
-        >
-          <ChevronLeft size={20} color={colors.text} strokeWidth={2.2} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>
-          Notifications {unread > 0 ? `(${unread})` : ''}
-        </Text>
-        <Pressable onPress={markAllRead} hitSlop={8}>
-          <Text style={[styles.headerAction, { color: unread > 0 ? colors.primary : colors.textTertiary }]}>
-            Mark all read
-          </Text>
-        </Pressable>
-      </View>
+      <ScreenHeader
+        title={`Notifications${unread > 0 ? ` (${unread})` : ''}`}
+        right={
+          <PressableScale onPress={markAllRead} hitSlop={8} scaleValue={0.92} accessibilityRole="button" accessibilityLabel="Mark all notifications as read">
+            <Text style={[styles.headerAction, { color: unread > 0 ? colors.primary : colors.textTertiary }]}>
+              Mark all read
+            </Text>
+          </PressableScale>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={{ padding: Spacing.lg, paddingBottom: insets.bottom + 40, gap: Spacing.sm }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
+        {items.length === 0 && (
+          <EmptyState
+            icon="notifications-outline"
+            title="No notifications yet"
+            body="When you get booking updates, messages, or reviews, they'll show up here."
+            ctaLabel="Browse listings"
+            onPress={() => router.push('/(tabs)/search')}
+          />
+        )}
         {items.map((n, i) => {
           const Icon = TYPE_ICON[n.type];
           return (
@@ -79,11 +105,14 @@ export default function NotificationsScreen() {
               key={n.id}
               entering={FadeInDown.duration(350).delay(i * 40)}
             >
-              <Pressable
+              <PressableScale
                 onPress={() => {
-                  haptics.light();
-                  setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+                  haptics.tap();
+                  if (!n.read) markNotificationRead(n.id);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`${n.read ? '' : 'Unread '}notification: ${n.title}`}
+                accessibilityHint={n.read ? undefined : 'Double tap to mark as read'}
                 style={[
                   styles.item,
                   {
@@ -93,7 +122,14 @@ export default function NotificationsScreen() {
                 ]}
               >
                 {n.avatar_url ? (
-                  <Image source={{ uri: n.avatar_url }} style={styles.avatar} />
+                  <AdaptiveImage
+                    source={{ uri: n.avatar_url }}
+                    contentFit="cover"
+                    circular
+                    overlayOpacity={0.12}
+                    style={styles.avatar}
+                    accessibilityLabel={`${n.title} avatar`}
+                  />
                 ) : (
                   <View style={[styles.iconWrap, { backgroundColor: colors.activeLight }]}>
                     <Icon size={20} color={colors.primary} strokeWidth={2} />
@@ -113,7 +149,7 @@ export default function NotificationsScreen() {
                     {relativeTime(n.created_at)} ago
                   </Text>
                 </View>
-              </Pressable>
+              </PressableScale>
             </Animated.View>
           );
         })}
@@ -124,16 +160,6 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  title: { ...Typography.headline, fontWeight: '700' },
   headerAction: { ...Typography.footnote, fontWeight: '700' },
 
   item: {

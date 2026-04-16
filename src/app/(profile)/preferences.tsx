@@ -1,13 +1,43 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, Switch } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  Switch,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ChevronLeft, Sun, Moon, Monitor, Check } from 'lucide-react-native';
+import {
+  Sun,
+  Moon,
+  Monitor,
+  Check,
+  MessageSquare,
+  Calendar,
+  DollarSign,
+  Star,
+  Megaphone,
+  Mail,
+} from 'lucide-react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { useHaptics } from '../../hooks/useHaptics';
 import { useStore } from '../../lib/store';
-import { Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  getNotificationPrefs,
+  setNotificationPrefs as saveNotificationPrefs,
+  type NotificationPrefs,
+} from '../../lib/api';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import { PressableScale } from '../../components/ui/PressableScale';
+import { Skeleton } from '../../components/ui/Skeleton';
+import {
+  Typography,
+  Spacing,
+  BorderRadius,
+  Shadows,
+} from '../../constants/theme';
 
 const THEME_OPTIONS = [
   { id: 'light' as const, label: 'Light', Icon: Sun },
@@ -15,49 +45,163 @@ const THEME_OPTIONS = [
   { id: 'system' as const, label: 'Match system', Icon: Monitor },
 ];
 
+type PushRow = {
+  key: keyof NotificationPrefs;
+  label: string;
+  sublabel: string;
+  Icon: typeof MessageSquare;
+};
+
+const PUSH_ROWS: PushRow[] = [
+  {
+    key: 'messages',
+    label: 'Messages',
+    sublabel: 'New DMs from creators or businesses',
+    Icon: MessageSquare,
+  },
+  {
+    key: 'bookings',
+    label: 'Booking updates',
+    sublabel: 'Accepted, declined, proof submitted, completed',
+    Icon: Calendar,
+  },
+  {
+    key: 'payments',
+    label: 'Payments & payouts',
+    sublabel: 'Captures, releases, refunds',
+    Icon: DollarSign,
+  },
+  {
+    key: 'reviews',
+    label: 'Reviews',
+    sublabel: 'Someone left you a review',
+    Icon: Star,
+  },
+  {
+    key: 'marketing',
+    label: 'Tips & promos',
+    sublabel: 'Product updates and special offers',
+    Icon: Megaphone,
+  },
+];
+
+const EMAIL_ROWS: PushRow[] = [
+  {
+    key: 'email_messages',
+    label: 'Message digest',
+    sublabel: 'Daily summary of unread messages',
+    Icon: MessageSquare,
+  },
+  {
+    key: 'email_bookings',
+    label: 'Booking receipts',
+    sublabel: 'Confirmations and status changes',
+    Icon: Calendar,
+  },
+  {
+    key: 'email_payments',
+    label: 'Payment receipts',
+    sublabel: 'Invoices, payouts, refunds',
+    Icon: DollarSign,
+  },
+  {
+    key: 'email_marketing',
+    label: 'Product updates',
+    sublabel: 'New features and surveys',
+    Icon: Megaphone,
+  },
+];
+
 export default function PreferencesScreen() {
   const { colors } = useTheme();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const haptics = useHaptics();
   const themePreference = useStore((s) => s.themePreference);
   const setThemePreference = useStore((s) => s.setThemePreference);
+  const user = useStore((s) => s.user);
 
-  const [pushOn, setPushOn] = React.useState(true);
-  const [emailOn, setEmailOn] = React.useState(true);
-  const [marketing, setMarketing] = React.useState(false);
+  const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    getNotificationPrefs(user.id).then((p) => {
+      setPrefs(p);
+      setLoaded(true);
+    });
+  }, [user]);
+
+  const toggle = useCallback(
+    async (key: keyof NotificationPrefs) => {
+      if (!user) return;
+      haptics.select();
+      setPrefs((prev) => {
+        const next = { ...prev, [key]: !prev[key] };
+        saveNotificationPrefs(user.id, { [key]: next[key] });
+        return next;
+      });
+    },
+    [user, haptics]
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
-        <Pressable onPress={() => { haptics.light(); router.back(); }} style={[styles.iconBtn, { backgroundColor: colors.surfaceSecondary }]} hitSlop={8}>
-          <ChevronLeft size={20} color={colors.text} strokeWidth={2.2} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Preferences</Text>
-        <View style={styles.iconBtn} />
-      </View>
+      <ScreenHeader title="Preferences" />
 
-      <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: insets.bottom + 40, gap: Spacing.xl }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: Spacing.lg,
+          paddingBottom: insets.bottom + 40,
+          gap: Spacing.xl,
+        }}
+      >
         <Animated.View entering={FadeInDown.duration(400)}>
-          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>APPEARANCE</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
+            APPEARANCE
+          </Text>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.surface, borderColor: colors.borderLight },
+            ]}
+          >
             {THEME_OPTIONS.map((opt, i) => {
               const selected = themePreference === opt.id;
               const Icon = opt.Icon;
               return (
                 <React.Fragment key={opt.id}>
-                  <Pressable
-                    onPress={() => { haptics.selection(); setThemePreference(opt.id); }}
+                  <PressableScale
+                    onPress={() => {
+                      haptics.select();
+                      setThemePreference(opt.id);
+                    }}
                     style={styles.row}
+                    accessibilityRole="radio"
+                    accessibilityLabel={opt.label}
+                    accessibilityState={{ selected }}
                   >
-                    <View style={[styles.rowIcon, { backgroundColor: colors.surfaceSecondary }]}>
+                    <View
+                      style={[
+                        styles.rowIcon,
+                        { backgroundColor: colors.surfaceSecondary },
+                      ]}
+                    >
                       <Icon size={18} color={colors.text} strokeWidth={2} />
                     </View>
-                    <Text style={[styles.rowLabel, { color: colors.text }]}>{opt.label}</Text>
-                    {selected && <Check size={20} color={colors.primary} strokeWidth={2.5} />}
-                  </Pressable>
+                    <Text style={[styles.rowLabel, { color: colors.text, flex: 1 }]}>
+                      {opt.label}
+                    </Text>
+                    {selected && (
+                      <Check size={20} color={colors.primary} strokeWidth={2.5} />
+                    )}
+                  </PressableScale>
                   {i < THEME_OPTIONS.length - 1 && (
-                    <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
+                    <View
+                      style={[
+                        styles.separator,
+                        { backgroundColor: colors.borderLight },
+                      ]}
+                    />
                   )}
                 </React.Fragment>
               );
@@ -65,14 +209,84 @@ export default function PreferencesScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(400).delay(100)}>
-          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>NOTIFICATIONS</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
-            <ToggleRow label="Push notifications" value={pushOn} onChange={setPushOn} colors={colors} />
-            <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
-            <ToggleRow label="Email updates" value={emailOn} onChange={setEmailOn} colors={colors} />
-            <View style={[styles.separator, { backgroundColor: colors.borderLight }]} />
-            <ToggleRow label="Marketing emails" value={marketing} onChange={setMarketing} colors={colors} />
+        <Animated.View entering={FadeInDown.duration(400).delay(80)}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
+            PUSH NOTIFICATIONS
+          </Text>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.surface, borderColor: colors.borderLight },
+            ]}
+          >
+            {!loaded ? (
+              <View style={{ padding: Spacing.md, gap: Spacing.sm }}>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} height={48} width="100%" />
+                ))}
+              </View>
+            ) : (
+              PUSH_ROWS.map((r, i) => (
+                <React.Fragment key={r.key}>
+                  <PrefRow
+                    row={r}
+                    value={prefs[r.key]}
+                    onToggle={() => toggle(r.key)}
+                    colors={colors}
+                  />
+                  {i < PUSH_ROWS.length - 1 && (
+                    <View
+                      style={[
+                        styles.separator,
+                        { backgroundColor: colors.borderLight },
+                      ]}
+                    />
+                  )}
+                </React.Fragment>
+              ))
+            )}
+          </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.duration(400).delay(160)}>
+          <View style={styles.emailSectionHeader}>
+            <Mail size={14} color={colors.textTertiary} strokeWidth={2} />
+            <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
+              EMAIL
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.surface, borderColor: colors.borderLight },
+            ]}
+          >
+            {!loaded ? (
+              <View style={{ padding: Spacing.md, gap: Spacing.sm }}>
+                {[0, 1].map((i) => (
+                  <Skeleton key={i} height={48} width="100%" />
+                ))}
+              </View>
+            ) : (
+              EMAIL_ROWS.map((r, i) => (
+                <React.Fragment key={r.key}>
+                  <PrefRow
+                    row={r}
+                    value={prefs[r.key]}
+                    onToggle={() => toggle(r.key)}
+                    colors={colors}
+                  />
+                  {i < EMAIL_ROWS.length - 1 && (
+                    <View
+                      style={[
+                        styles.separator,
+                        { backgroundColor: colors.borderLight },
+                      ]}
+                    />
+                  )}
+                </React.Fragment>
+              ))
+            )}
           </View>
         </Animated.View>
       </ScrollView>
@@ -80,25 +294,37 @@ export default function PreferencesScreen() {
   );
 }
 
-function ToggleRow({
-  label,
+function PrefRow({
+  row,
   value,
-  onChange,
+  onToggle,
   colors,
 }: {
-  label: string;
+  row: PushRow;
   value: boolean;
-  onChange: (v: boolean) => void;
+  onToggle: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
+  const Icon = row.Icon;
   return (
     <View style={styles.row}>
-      <Text style={[styles.rowLabel, { color: colors.text, flex: 1 }]}>{label}</Text>
+      <View style={[styles.rowIcon, { backgroundColor: colors.surfaceSecondary }]}>
+        <Icon size={18} color={colors.text} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowLabel, { color: colors.text }]}>{row.label}</Text>
+        <Text style={[styles.rowSubLabel, { color: colors.textTertiary }]}>
+          {row.sublabel}
+        </Text>
+      </View>
       <Switch
         value={value}
-        onValueChange={onChange}
+        onValueChange={onToggle}
         trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
         thumbColor="#fff"
+        accessibilityRole="switch"
+        accessibilityLabel={`${row.label}: ${row.sublabel}`}
+        accessibilityState={{ checked: value }}
       />
     </View>
   );
@@ -106,18 +332,20 @@ function ToggleRow({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
+  sectionLabel: {
+    ...Typography.caption2,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: Spacing.sm,
+    paddingLeft: Spacing.sm,
+  },
+  emailSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+    marginBottom: Spacing.xs,
+    paddingLeft: Spacing.sm,
   },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  title: { ...Typography.headline, fontWeight: '700' },
-
-  sectionLabel: { ...Typography.caption2, fontWeight: '700', letterSpacing: 0.8, marginBottom: Spacing.sm, paddingLeft: Spacing.sm },
   card: {
     borderRadius: BorderRadius.lg,
     borderWidth: StyleSheet.hairlineWidth,
@@ -131,7 +359,17 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.md,
   },
-  rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  rowLabel: { ...Typography.subheadline, fontWeight: '500' },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: Spacing.md + 36 + Spacing.md },
+  rowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowLabel: { ...Typography.subheadline, fontWeight: '600' },
+  rowSubLabel: { ...Typography.caption1, marginTop: 2 },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: Spacing.md + 36 + Spacing.md,
+  },
 });
