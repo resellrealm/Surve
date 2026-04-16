@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!--
+    Surve flat mark — S with chevron/arrow tips on both ends.
+    Silhouette echoes the 3D chrome hero logo; designed for small sizes.
+    Single path, recolour via `fill` on the <svg> or the <path>.
+  -->
+  <path
+    fill="currentColor"
+    d="M168 38 L118 38 L142 62 L98 62 C74 62 56 80 56 102 C56 122 72 138 94 138 L130 138 L96 172 L130 172 L170 132 L170 108 L96 108 C88 108 82 102 82 94 C82 86 88 80 96 80 L142 80 L118 102 L168 102 Z"
+  />
+</svg>
