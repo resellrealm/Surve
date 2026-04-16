@@ -16,14 +16,30 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
+  username?: string | null;
+  bio?: string | null;
+  location?: string | null;
   avatar_url: string | null;
+  avatar_blurhash?: string | null;
   role: UserRole;
   onboarding_completed_at: string | null;
   email_verified_at: string | null;
+  phone?: string | null;
+  phone_verified_at?: string | null;
   accepted_terms_at: string | null;
   terms_version: string | null;
+  show_reviews_publicly?: boolean;
+  milestones: UserMilestones;
   created_at: string;
   updated_at: string;
+}
+
+export type MilestoneKey = 'first_booking_confirmed' | 'first_review_left' | 'first_payout_received';
+
+export interface UserMilestones {
+  first_booking_confirmed?: string;
+  first_review_left?: string;
+  first_payout_received?: string;
 }
 
 // ─── Creator ─────────────────────────────────────────────────────────────────
@@ -46,6 +62,9 @@ export interface Creator {
   total_bookings: number;
   location: string;
   verified: boolean;
+  show_rates_publicly?: boolean;
+  stripe_account_id?: string | null;
+  stripe_onboarding_complete?: boolean | null;
   created_at: string;
 }
 
@@ -61,16 +80,54 @@ export interface Business {
   location: string;
   website: string | null;
   image_url: string;
+  image_blurhash?: string | null;
   rating: number;
   total_reviews: number;
   total_listings: number;
   verified: boolean;
+  created_at: string;
+  logo_url?: string | null;
+  cover_url?: string | null;
+  brand_story?: string | null;
+  cuisine_tags?: string[] | null;
+  social_handles?: Record<string, string> | null;
+  press_kit_url?: string | null;
+  founded_year?: number | null;
+  employee_count_range?: string | null;
+}
+
+// ─── Location ───────────────────────────────────────────────────────────────
+
+export type VenueType = 'hotel' | 'restaurant' | 'bar' | 'cafe' | 'resort' | 'spa' | 'other';
+
+export interface Location {
+  id: string;
+  business_id: string;
+  name: string;
+  address_line1: string | null;
+  city: string | null;
+  country_code: string;
+  lat: number | null;
+  lng: number | null;
+  venue_type: VenueType | null;
+  is_primary: boolean;
   created_at: string;
 }
 
 // ─── Listing ─────────────────────────────────────────────────────────────────
 
 export type ListingStatus = 'active' | 'paused' | 'closed' | 'draft';
+export type ListingType = 'collab' | 'paid' | 'gifted' | 'exchange';
+export type CompType = 'paid' | 'comped_stay' | 'comped_meal' | 'product' | 'mixed';
+export type ContentRights = 'creator_owns' | 'shared' | 'business_owns' | 'licensed';
+export type DurationType = 'single_day' | 'multi_day' | 'ongoing' | 'flexible';
+
+export interface Deliverable {
+  type: string;
+  count: number;
+  platform?: string;
+  notes?: string;
+}
 
 export interface Listing {
   id: string;
@@ -88,15 +145,28 @@ export interface Listing {
   deadline: string;
   location: string;
   image_url: string;
+  image_blurhash?: string | null;
   status: ListingStatus;
   applicants_count: number;
+  listing_type?: ListingType | null;
+  comp_type?: CompType | null;
+  deliverables?: Deliverable[] | null;
+  content_rights?: ContentRights | null;
+  required_hashtags?: string[] | null;
+  date_window_start?: string | null;
+  date_window_end?: string | null;
+  duration_type?: DurationType | null;
+  max_applicants?: number | null;
+  brand_guidelines?: string | null;
+  location_id?: string | null;
+  location_detail?: Location | null;
   created_at: string;
   updated_at: string;
 }
 
 // ─── Booking ─────────────────────────────────────────────────────────────────
 
-export type BookingStatus = 'pending' | 'accepted' | 'active' | 'in_progress' | 'proof_submitted' | 'completed' | 'cancelled';
+export type BookingStatus = 'pending' | 'accepted' | 'active' | 'in_progress' | 'proof_submitted' | 'completed' | 'disputed' | 'cancelled' | 'refunded';
 
 export interface Booking {
   id: string;
@@ -118,6 +188,12 @@ export interface Booking {
   proof_note: string | null;
   proof_submitted_at: string | null;
   auto_approve_at: string | null;
+  refund_status?: 'requested' | 'processing' | 'refunded' | 'failed' | 'rejected' | null;
+  refund_amount?: number | null;
+  refund_reason?: string | null;
+  refund_requested_at?: string | null;
+  refunded_at?: string | null;
+  stripe_refund_id?: string | null;
 }
 
 // ─── Message ─────────────────────────────────────────────────────────────────
@@ -128,8 +204,16 @@ export interface Message {
   sender_id: string;
   text: string;
   read: boolean;
+  reactions: Record<string, string[]>;
+  moderation_flags: ModerationFlag[];
   created_at: string;
 }
+
+export type ModerationFlag =
+  | { kind: 'profanity'; match: string }
+  | { kind: 'phone_number'; match: string }
+  | { kind: 'email'; match: string }
+  | { kind: 'off_platform'; match: string };
 
 // ─── Conversation ────────────────────────────────────────────────────────────
 
@@ -150,12 +234,20 @@ export interface Conversation {
 export interface Review {
   id: string;
   reviewer_id: string;
+  reply_text?: string | null;
+  replied_at?: string | null;
+  replied_by?: string | null;
   reviewer_name: string;
   reviewer_avatar: string | null;
   target_id: string;
   rating: number;
   comment: string;
   created_at: string;
+  tags?: string[] | null;
+  is_public?: boolean | null;
+  photos?: string[] | null;
+  verified_booking_id?: string | null;
+  reviewer_role?: 'creator' | 'business' | null;
 }
 
 // ─── Filter ──────────────────────────────────────────────────────────────────
@@ -167,6 +259,13 @@ export interface ListingFilters {
   pay_max: number | null;
   sort_by: 'newest' | 'highest_pay' | 'closest';
   search_query: string;
+}
+
+export interface CreatorFilters {
+  category: Category | 'all';
+  followersMin: number | null;
+  followersMax: number | null;
+  engagementMin: number | null;
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -232,9 +331,86 @@ export interface Transaction {
   created_at: string;
 }
 
+// ─── Fraud Flag ─────────────────────────────────────────────────────────────
+
+export type FraudFlagType =
+  | 'chargeback'
+  | 'chargeback_updated'
+  | 'chargeback_won'
+  | 'chargeback_lost'
+  | 'high_amount'
+  | 'velocity'
+  | 'new_account'
+  | 'mismatched_country';
+
+export type FraudFlagSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type FraudFlagStatus = 'pending_review' | 'reviewing' | 'resolved_safe' | 'resolved_fraud' | 'auto_dismissed';
+
+export interface FraudFlag {
+  id: string;
+  booking_id: string | null;
+  user_id: string | null;
+  stripe_dispute_id: string | null;
+  stripe_payment_intent_id: string | null;
+  flag_type: FraudFlagType;
+  risk_score: number;
+  severity: FraudFlagSeverity;
+  status: FraudFlagStatus;
+  reason: string;
+  details: Record<string, unknown>;
+  admin_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Application ─────────────────────────────────────────────────────────────
 
-export type ApplicationStatus = 'pending' | 'accepted' | 'rejected';
+// ─── Creator Analytics ──────────────────────────────────────────────────────
+
+export interface CreatorAnalytics {
+  profile_views: number;
+  listing_clicks: number;
+  applications_count: number;
+  profile_views_delta: number;
+  listing_clicks_delta: number;
+  applications_delta: number;
+  period_start: string;
+  period_end: string;
+}
+
+// ─── Listing Analytics ──────────────────────────────────────────────────────
+
+export interface ListingAnalyticsPoint {
+  date: string;
+  views: number;
+  clicks: number;
+  applications: number;
+}
+
+export interface ListingAnalyticsSummary {
+  total_views: number;
+  total_clicks: number;
+  total_applications: number;
+  views_delta: number;
+  clicks_delta: number;
+  applications_delta: number;
+  daily: ListingAnalyticsPoint[];
+}
+
+// ─── Application ─────────────────────────────────────────────────────────────
+
+// ─── User Stats ─────────────────────────────────────────────────────────────
+
+export interface UserStats {
+  total_bookings: number;
+  total_earnings: number;
+  avg_rating: number;
+  response_time: number;
+}
+
+export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 
 export interface Application {
   id: string;
@@ -244,4 +420,6 @@ export interface Application {
   status: ApplicationStatus;
   created_at: string;
   updated_at: string;
+  creator?: Creator;
+  listing?: Listing;
 }

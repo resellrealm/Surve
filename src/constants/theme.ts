@@ -6,53 +6,55 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // Premium, clean, professional creator-business platform
 export const Colors = {
   light: {
-    primary: '#2c428f',
+    // WCAG AA audit (body >=4.5:1, large >=3:1) — see S115
+    primary: '#2c428f',          // onPrimary #FFF on primary: 9.20:1 — AA pass
     primaryLight: '#3a4f99',
     primaryDark: '#111d4a',
     secondary: '#059669',
     secondaryLight: '#6EE7B7',
     accent: '#2c428f',
-    background: '#F4F3F4',
-    surface: '#FFFFFF',
+    background: '#F4F3F4',       // text #000 on bg: 18.97:1 — AA pass
+    surface: '#FFFFFF',          // text #000 on surface: 21:1 — AA pass
     surfaceSecondary: '#ECECEC',
     text: '#000000',
-    textSecondary: '#6B7280',
-    textTertiary: '#9CA3AF',
+    textSecondary: '#595F6A',    // on bg: 5.80:1, on surface: 6.42:1 — AA body pass (was #6B7280, 4.37:1 bg fail)
+    textTertiary: '#737885',     // on bg: 3.99:1 (large pass), on surface: 4.42:1 — AA pass large, was #9CA3AF 2.29:1 fail
     border: '#E5E5E5',
     borderLight: '#F0F0F0',
-    error: '#DC2626',
+    error: '#DC2626',            // on surface: 4.83:1 — AA body pass
     errorLight: '#FEF2F2',
-    warning: '#D97706',
+    warning: '#D97706',          // on surface: 3.19:1 — AA large pass (used as icon/pill bg)
     warningLight: '#FFFBEB',
-    success: '#059669',
+    success: '#059669',          // on surface: 3.77:1 — AA large pass (used as icon/pill bg)
     successLight: '#ECFDF5',
-    onPrimary: '#FFFFFF',
-    rating: '#F59E0B',
+    onPrimary: '#FFFFFF',        // #FFF on primary #2c428f: 9.20:1 — AA pass
+    rating: '#F59E0B',           // star fill only — not for text
     overlay: 'rgba(0, 0, 0, 0.4)',
     card: '#FFFFFF',
     skeleton: '#E5E5E5',
-    pending: '#D97706',
+    pending: '#D97706',          // on pendingLight: 3.07:1 — AA large pass (status pill)
     pendingLight: '#FFFBEB',
-    active: '#2c428f',
+    active: '#2c428f',           // on activeLight: 8.08:1 — AA pass
     activeLight: '#EEF0F8',
-    completed: '#059669',
+    completed: '#059669',        // on completedLight: 3.58:1 — AA large pass
     completedLight: '#ECFDF5',
-    cancelled: '#DC2626',
+    cancelled: '#DC2626',        // on cancelledLight: 4.41:1 — AA large pass
     cancelledLight: '#FEF2F2',
   },
   dark: {
-    primary: '#4A6CF7',
+    // WCAG AA audit (body >=4.5:1, large >=3:1) — see S115
+    primary: '#4A6CF7',          // on bg: 4.51:1 — AA body pass
     primaryLight: '#2c428f',
     primaryDark: '#97ABFF',
     secondary: '#6EE7B7',
     secondaryLight: '#059669',
     accent: '#4A6CF7',
-    background: '#0A0A0A',
-    surface: '#1A1A1A',
+    background: '#0A0A0A',       // text #FFF: 19.80:1 — AA pass
+    surface: '#1A1A1A',          // text #FFF: 17.40:1 — AA pass
     surfaceSecondary: '#252525',
     text: '#FFFFFF',
-    textSecondary: '#9CA3AF',
-    textTertiary: '#6B7280',
+    textSecondary: '#9CA3AF',    // on bg: 7.80:1, surface: 6.86:1 — AA pass
+    textTertiary: '#8A8F9C',     // on bg: ~4.9:1, surface: ~4.3:1 — AA pass large (was #6B7280 3.60:1 surface)
     border: '#2A2A2A',
     borderLight: '#1F1F1F',
     error: '#EF4444',
@@ -77,68 +79,91 @@ export const Colors = {
   },
 } as const;
 
+// Plus Jakarta Sans — loaded in _layout.tsx via @expo-google-fonts.
+// Each Typography token picks the font file that matches its weight, so
+// Pressable overrides like `fontWeight: '700'` still win visually because
+// the 700 font file is used by default for titles.
+export const Fonts = {
+  regular: 'PlusJakartaSans_400Regular',
+  medium: 'PlusJakartaSans_500Medium',
+  semibold: 'PlusJakartaSans_600SemiBold',
+  bold: 'PlusJakartaSans_700Bold',
+  extrabold: 'PlusJakartaSans_800ExtraBold',
+} as const;
+
 export const Typography = {
   largeTitle: {
+    fontFamily: Fonts.bold,
     fontSize: 34,
     fontWeight: '700' as const,
     letterSpacing: 0.37,
     lineHeight: 41,
   },
   title1: {
+    fontFamily: Fonts.bold,
     fontSize: 28,
     fontWeight: '700' as const,
     letterSpacing: 0.36,
     lineHeight: 34,
   },
   title2: {
+    fontFamily: Fonts.bold,
     fontSize: 22,
     fontWeight: '700' as const,
     letterSpacing: 0.35,
     lineHeight: 28,
   },
   title3: {
+    fontFamily: Fonts.semibold,
     fontSize: 20,
     fontWeight: '600' as const,
     letterSpacing: 0.38,
     lineHeight: 25,
   },
   headline: {
+    fontFamily: Fonts.semibold,
     fontSize: 17,
     fontWeight: '600' as const,
     letterSpacing: -0.41,
     lineHeight: 22,
   },
   body: {
+    fontFamily: Fonts.regular,
     fontSize: 17,
     fontWeight: '400' as const,
     letterSpacing: -0.41,
     lineHeight: 22,
   },
   callout: {
+    fontFamily: Fonts.regular,
     fontSize: 16,
     fontWeight: '400' as const,
     letterSpacing: -0.32,
     lineHeight: 21,
   },
   subheadline: {
+    fontFamily: Fonts.regular,
     fontSize: 15,
     fontWeight: '400' as const,
     letterSpacing: -0.24,
     lineHeight: 20,
   },
   footnote: {
+    fontFamily: Fonts.regular,
     fontSize: 13,
     fontWeight: '400' as const,
     letterSpacing: -0.08,
     lineHeight: 18,
   },
   caption1: {
+    fontFamily: Fonts.regular,
     fontSize: 12,
     fontWeight: '400' as const,
     letterSpacing: 0,
     lineHeight: 16,
   },
   caption2: {
+    fontFamily: Fonts.regular,
     fontSize: 11,
     fontWeight: '400' as const,
     letterSpacing: 0.07,
@@ -232,5 +257,5 @@ export const Layout = {
   screenHeight: SCREEN_HEIGHT,
   isSmallDevice: SCREEN_WIDTH < 375,
   contentPadding: 16,
-  tabBarHeight: 60,
+  tabBarHeight: 56,
 } as const;
