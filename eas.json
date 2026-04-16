@@ -61,8 +61,8 @@
     "production": {
       "ios": {
         "appleId": "astropodzx@gmail.com",
-        "ascAppId": "APPLE_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "APPLE_TEAM_ID"
+        "ascAppId": "$APPLE_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "$APPLE_TEAM_ID"
       },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
@@ -72,8 +72,8 @@
     "preview": {
       "ios": {
         "appleId": "astropodzx@gmail.com",
-        "ascAppId": "APPLE_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "APPLE_TEAM_ID"
+        "ascAppId": "$APPLE_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "$APPLE_TEAM_ID"
       },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
